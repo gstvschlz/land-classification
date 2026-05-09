@@ -1,0 +1,66 @@
+# Default configuration for the land-classification benchmark.
+seed: 42
+n_folds: 5
+data:
+  root: data
+  dataset: eurosat_rgb
+  num_classes: 10
+  image_size_traditional: 64
+  image_size_deep: 224
+  class_names:
+    - AnnualCrop
+    - Forest
+    - HerbaceousVegetation
+    - Highway
+    - Industrial
+    - Pasture
+    - PermanentCrop
+    - Residential
+    - River
+    - SeaLake
+
+results:
+  root: results
+  metrics_dir: results/metrics
+  figures_dir: results/figures
+  predictions_dir: results/predictions
+
+features:
+  hsv_bins: 16
+  glcm_distances: [1]
+  glcm_angles_deg: [0, 45, 90, 135]
+  cache_path: results/features.npz
+
+models:
+  random_forest:
+    n_estimators: 500
+    max_depth: null
+    class_weight: balanced
+    n_jobs: -1
+  xgboost:
+    n_estimators: 800
+    max_depth: 8
+    learning_rate: 0.05
+    subsample: 0.9
+    colsample_bytree: 0.9
+    early_stopping_rounds: 50
+    tree_method: hist
+  resnet18:
+    epochs: 30
+    batch_size: 64
+    lr: 3.0e-4
+    weight_decay: 1.0e-4
+    warmup_epochs: 2
+    label_smoothing: 0.05
+
+explain:
+  shap_max_samples: 1500
+  permutation_repeats: 8
+  cnn_examples_per_class: 2
+  cnn_wrong_per_class: 1
+  occlusion_patch: 32
+  occlusion_stride: 16
+
+evaluation:
+  bootstrap_iters: 2000
+  bootstrap_alpha: 0.05

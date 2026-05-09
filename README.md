@@ -1,6 +1,6 @@
 # Classificação de Uso do Solo
 
-> Trabalho da disciplina de Sensoriamento Remoto (GEO05038) realizada em 2022/1. Código reorganizado com `uv`.
+> Trabalho da disciplina de Sensoriamento Remoto (GEO05038) 2022/1. Código reorganizado com `uv`.
 
 Benchmark de modelos tradicionais e profundos para classificação de uso do solo
 no EuroSAT-RGB (Sentinel-2, 10 classes, 27 000 patches), com análise de

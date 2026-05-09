@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Classificação de Uso do Solo com Imagens Sentinel-2</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Georgia", serif;
+      font-size: 16px;
+      line-height: 1.75;
+      color: #1a1a1a;
+      background: #f9f8f5;
+    }
+
+    /* ── Layout ── */
+    .page {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 3rem 2rem 5rem;
+    }
+
+    /* ── Header ── */
+    header {
+      text-align: center;
+      margin-bottom: 2.5rem;
+      border-bottom: 2px solid #2c5f2e;
+      padding-bottom: 1.5rem;
+    }
+
+    header h1 {
+      font-size: 1.55rem;
+      font-weight: 700;
+      line-height: 1.35;
+      color: #1b3a1c;
+      margin-bottom: 0.75rem;
+    }
+
+    header .author {
+      font-size: 0.95rem;
+      color: #555;
+      font-style: italic;
+    }
+
+    /* ── Abstract ── */
+    .abstract {
+      background: #eef4ee;
+      border-left: 4px solid #2c5f2e;
+      padding: 1rem 1.25rem;
+      margin-bottom: 2.5rem;
+      border-radius: 0 4px 4px 0;
+    }
+
+    .abstract h2 {
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #2c5f2e;
+      margin-bottom: 0.5rem;
+    }
+
+    .abstract p { font-size: 0.93rem; margin-bottom: 0.6rem; }
+    .abstract p:last-child { margin-bottom: 0; }
+
+    .keywords {
+      font-size: 0.88rem;
+      color: #444;
+      margin-top: 0.5rem;
+    }
+
+    /* ── Sections ── */
+    section { margin-bottom: 2.5rem; }
+
+    h2.section-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #1b3a1c;
+      border-bottom: 1px solid #c5d9c5;
+      padding-bottom: 0.3rem;
+      margin-bottom: 1rem;
+    }
+
+    h3.subsection-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #2c5f2e;
+      margin: 1.25rem 0 0.5rem;
+    }
+
+    p { margin-bottom: 0.9rem; }
+
+    /* ── Lists ── */
+    ul, ol {
+      margin: 0.5rem 0 0.9rem 1.5rem;
+    }
+    li { margin-bottom: 0.35rem; }
+
+    /* ── Tables ── */
+    .table-wrap {
+      overflow-x: auto;
+      margin: 1rem 0 1.5rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+    }
+
+    caption {
+      text-align: left;
+      font-size: 0.85rem;
+      color: #444;
+      margin-bottom: 0.4rem;
+      font-style: italic;
+    }
+
+    thead th {
+      background: #2c5f2e;
+      color: #fff;
+      padding: 0.55rem 0.75rem;
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    tbody tr:nth-child(odd)  { background: #f2f7f2; }
+    tbody tr:nth-child(even) { background: #ffffff; }
+
+    tbody td {
+      padding: 0.45rem 0.75rem;
+      border-bottom: 1px solid #dde8dd;
+      vertical-align: top;
+    }
+
+    td.best { font-weight: 700; color: #1b3a1c; }
+
+    tfoot td {
+      padding: 0.4rem 0.75rem;
+      font-size: 0.82rem;
+      color: #555;
+      border-top: 1px solid #aac5aa;
+    }
+
+    /* ── Figures ── */
+    figure {
+      margin: 1.25rem 0 1.75rem;
+      text-align: center;
+    }
+
+    figure img {
+      max-width: 100%;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+
+    figcaption {
+      font-size: 0.83rem;
+      color: #555;
+      margin-top: 0.4rem;
+      font-style: italic;
+    }
+
+    /* ── Inline code ── */
+    code {
+      font-family: "Courier New", monospace;
+      font-size: 0.85em;
+      background: #e8f0e8;
+      padding: 0.1em 0.35em;
+      border-radius: 3px;
+    }
+
+    /* ── References ── */
+    .references ol { font-size: 0.88rem; }
+    .references li { margin-bottom: 0.55rem; }
+
+    /* ── Responsive ── */
+    @media (max-width: 600px) {
+      header h1 { font-size: 1.2rem; }
+      .page { padding: 1.5rem 1rem 3rem; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1>Classificação de Uso do Solo com Imagens Sentinel-2</h1>
+    <p class="author">Gustavo Scholze -
+      Disciplina de Sensoriamento Remoto (GEO05038) 2022/1</p>
+  </header>
+
+  <div class="abstract">
+    <h2>Resumo</h2>
+    <p>
+      Este trabalho apresenta um benchmark de classificação de uso do solo sobre o conjunto de dados
+      EuroSAT-RGB, derivado de imagens multiespectrais Sentinel-2. Três famílias de modelos foram
+      avaliadas: Random Forest e XGBooste uma rede
+      convolucional ResNet-18 pré-treinada no ImageNet. A avaliação segue um protocolo rigoroso de
+      validação cruzada estratificada em 5 folds, com intervalos de confiança bootstrap (95&nbsp;%)
+      e testes de significância pareados (bootstrap pareado + McNemar com correção de Holm). A
+      ResNet-18 alcança acurácia de 98,54&nbsp;%, superando os modelos tradicionais de forma
+      estatisticamente significativa. A análise de explicabilidade (importância de features,
+      SHAP, Grad-CAM e sensibilidade por oclusão) revela que textura (GLCM) é o grupo de
+      features mais informativo para os modelos tradicionais, enquanto a CNN explora padrões
+      espaciais de alto nível para resolver classes visualmente difíceis como Highway e
+      PermanentCrop. Os resultados demonstram o ganho expressivo obtido por representações
+      aprendidas frente a features manuais em tarefas de teledetecção.
+    </p>
+    <p class="keywords"><strong>Palavras-chave:</strong> classificação de imagens de satélite, EuroSAT,
+      Random Forest, XGBoost, ResNet, Grad-CAM, SHAP, validação cruzada, sensoriamento remoto.</p>
+  </div>
+
+  <section id="introducao">
+    <h2 class="section-title">1. Introdução</h2>
+
+    <p>
+      O mapeamento automatizado do uso e cobertura do solo a partir de imagens orbitais é uma tarefa
+      central em sensoriamento remoto e tem aplicações diretas em planejamento territorial,
+      monitoramento agrícola, gestão de recursos hídricos e estudos climáticos. O avanço dos
+      satélites de observação da Terra &mdash; em especial os da constelação Sentinel-2 do programa
+      Copernicus &mdash; tornou disponível um fluxo contínuo de imagens multiespectrais de média
+      resolução (10&ndash;60&nbsp;m) com revisita de poucos dias, abrindo espaço para abordagens de
+      aprendizado de máquina em larga escala.
+    </p>
+    <p>
+      O conjunto de dados EuroSAT (Helber <em>et al.</em>, 2019) foi proposto precisamente para
+      <em>benchmarking</em> dessas abordagens: 27&nbsp;000 <em>patches</em> de 64&nbsp;&times;&nbsp;64 pixels
+      organizados em 10 classes de uso do solo, cobrindo diferentes países europeus. O subconjunto
+      RGB (três bandas visíveis) é amplamente adotado como ponto de partida por permitir o uso de
+      modelos pré-treinados no ImageNet sem adaptação de canal.
+    </p>
+    <p>
+      Este trabalho tem dois objetivos principais. O primeiro é realizar uma análise exploratória do
+      conjunto de dados (distribuição de classes, características espectrais e espaciais) para
+      compreender a natureza do problema. O segundo é comparar três abordagens de
+      classificação: Random Forest, XGBoost e ResNet-18; sob um protocolo experimental
+      unificado, acompanhado de análise de explicabilidade para interpretar as decisões dos modelos.
+    </p>
+  </section>
+
+  <section id="dataset">
+    <h2 class="section-title">2. Conjunto de Dados</h2>
+
+    <h3 class="subsection-title">2.1 EuroSAT-RGB</h3>
+    <p>
+      O EuroSAT-RGB é composto por imagens RGB derivadas das bandas B04 (vermelho), B03 (verde)
+      e B02 (azul) do satélite Sentinel-2, com resolução espacial de 10&nbsp;m/pixel e tamanho fixo
+      de 64&nbsp;&times;&nbsp;64 pixels por <em>patch</em> (cobrindo uma área de aproximadamente
+      0,41&nbsp;km² cada). As 10 classes e a quantidade de amostras por classe são apresentadas na
+      Tabela&nbsp;1.
+    </p>
+
+    <div class="table-wrap">
+      <table>
+        <caption>Tabela 1 &mdash; Distribuição de amostras por classe no EuroSAT-RGB.</caption>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Classe</th>
+            <th>N</th>
+            <th>% total</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>0</td><td>AnnualCrop</td><td>3 000</td><td>11,1 %</td></tr>
+          <tr><td>1</td><td>Forest</td><td>3 000</td><td>11,1 %</td></tr>
+          <tr><td>2</td><td>HerbaceousVegetation</td><td>3 000</td><td>11,1 %</td></tr>
+          <tr><td>3</td><td>Highway</td><td>2 500</td><td>9,3 %</td></tr>
+          <tr><td>4</td><td>Industrial</td><td>2 500</td><td>9,3 %</td></tr>
+          <tr><td>5</td><td>Pasture</td><td>2 000</td><td>7,4 %</td></tr>
+          <tr><td>6</td><td>PermanentCrop</td><td>2 500</td><td>9,3 %</td></tr>
+          <tr><td>7</td><td>Residential</td><td>3 000</td><td>11,1 %</td></tr>
+          <tr><td>8</td><td>River</td><td>2 500</td><td>9,3 %</td></tr>
+          <tr><td>9</td><td>SeaLake</td><td>3 000</td><td>11,1 %</td></tr>
+        </tbody>
+        <tfoot>
+          <tr><td colspan="2"><strong>Total</strong></td><td><strong>27 000</strong></td><td><strong>100 %</strong></td></tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <figure>
+      <img src="../results/figures/class_distribution.png"
+           alt="Histograma de distribuição de classes no EuroSAT-RGB" />
+      <figcaption>Figura 1 &mdash; Distribuição de amostras por classe. <em>Pasture</em> é a classe
+        com menor representatividade (2 000 amostras).</figcaption>
+    </figure>
+
+    <p>
+      O dataset apresenta leve desbalanceamento: <em>Pasture</em> é a classe menos representada
+      (2&nbsp;000 amostras, 7,4&nbsp;%), ao passo que seis classes possuem o máximo de 3&nbsp;000.
+      A razão máxima entre classes é 1,5:1,
+      portanto o desbalanceamento não exige reamostragem agressiva, mas justifica o uso de acurácia
+      balanceada e F1-macro como métricas primárias.
+    </p>
+
+    <h3 class="subsection-title">2.2 Análise Espectral e de Textura</h3>
+    <p>As 10 classes podem ser agrupadas em três grandes categorias com características distintas:</p>
+    <ul>
+      <li>
+        <strong>Vegetação natural e cultivada</strong> (<em>AnnualCrop</em>,
+        <em>HerbaceousVegetation</em>, <em>Pasture</em>, <em>PermanentCrop</em>,
+        <em>Forest</em>): resposta intensa no canal verde, baixa no vermelho, e textura variável
+        segundo a densidade e estrutura do dossel. <em>Forest</em> exibe alta homogeneidade na
+        textura GLCM, enquanto cultivos apresentam padrões regulares de talhões com bordas
+        bem definidas.
+      </li>
+      <li>
+        <strong>Estrutura construída</strong> (<em>Highway</em>, <em>Industrial</em>,
+        <em>Residential</em>): baixa resposta espectral na faixa verde-vermelho (pavimentos,
+        telhados) e alta densidade de bordas (operador de Canny). <em>Residential</em> combina
+        estruturas artificiais com vegetação urbana, elevando a variabilidade intraclasse.
+      </li>
+      <li>
+        <strong>Corpos hídricos</strong> (<em>River</em>, <em>SeaLake</em>): baixa refletância
+        geral e alta homogeneidade de textura. <em>River</em> difere de <em>SeaLake</em> pela forma
+        alongada e pelas bordas com vegetação ripária, introduzindo variabilidade espectral.
+      </li>
+    </ul>
+    <p>
+      O índice VARI (<em>Visible Atmospherically Resistant Index</em>, definido como
+      (G &minus; R) / (G + R &minus; B)) foi utilizado como proxy de verdor, sendo capaz de separar
+      vegetação densa de superfícies impermeáveis sem recorrer a bandas do infravermelho próximo.
+    </p>
+    <p>
+      As classes mais desafiadoras para modelos tradicionais são <em>Highway</em> e
+      <em>PermanentCrop</em>: ambas compartilham padrões de linhas (estradas e fileiras de plantio)
+      e resposta espectral intermediária, gerando confusão mútua e, respectivamente, com
+      <em>River</em> e <em>AnnualCrop</em>.
+    </p>
+  </section>
+
+
+  <section id="metodologia">
+    <h2 class="section-title">3. Metodologia</h2>
+
+    <h3 class="subsection-title">3.1 Particionamento e Protocolo de Avaliação</h3>
+    <p>
+      O conjunto de dados foi dividido em 5 <em>folds</em> estratificados, garantindo
+      proporção equivalente de cada classe. O mesmo particionamento é compartilhado por todos os
+      modelos, permitindo testes de significância pareados. Em cada <em>fold</em>, o conjunto de
+      treino corresponde a ~80&nbsp;% das amostras e o de teste a ~20&nbsp;% (~5&nbsp;400 amostras).
+    </p>
+    <p>
+      As métricas reportadas são: acurácia global, acurácia balanceada, F1-macro, coeficiente
+      Kappa de Cohen, <em>top-2 accuracy</em>, AUC-ROC macro e ECE (<em>Expected Calibration
+      Error</em>). Os intervalos de confiança a 95&nbsp;% foram calculados por <em>bootstrap</em> com
+      2&nbsp;000 iterações. As comparações par-a-par utilizam <em>bootstrap</em> pareado e teste de
+      McNemar, ambos com correção de Holm.
+    </p>
+
+    <h3 class="subsection-title">3.2 Extração de Features Artesanais</h3>
+    <p>
+      Para os modelos tradicionais, cada imagem 64&nbsp;&times;&nbsp;64 RGB é representada por um
+      vetor de <strong>89 features</strong> escalares, organizadas em seis grupos:
+    </p>
+    <ol>
+      <li><strong>Estatísticas RGB</strong> (9 features): média, desvio-padrão e assimetria por canal R, G, B.</li>
+      <li><strong>Histogramas HSV</strong> (48 features): 16 bins por canal H, S e V, normalizados por densidade.</li>
+      <li><strong>Textura GLCM</strong> (20 features): contraste, dissimilaridade, homogeneidade, energia e correlação para 4 ângulos (0°, 45°, 90°, 135°), distância 1 pixel.</li>
+      <li><strong>Momentos de Hu</strong> (7 features): invariantes à escala, rotação e translação, com estabilização logarítmica.</li>
+      <li><strong>Densidade de bordas</strong> (1 feature): fração de pixels detectados pelo operador Canny (&sigma;&nbsp;=&nbsp;1).</li>
+      <li><strong>VARI</strong> (2 features): média e desvio-padrão do índice de verdor.</li>
+    </ol>
+
+    <h3 class="subsection-title">3.3 Modelos</h3>
+    <p>
+      <strong>Random Forest (RF):</strong> 500 árvores, profundidade irrestrita, pesos de classe
+      balanceados. 2&nbsp;264&nbsp;252 parâmetros (nós e folhas).
+    </p>
+    <p>
+      <strong>XGBoost (XGB):</strong> 800 estimadores máximos, profundidade 8, taxa de aprendizado
+      0,05, <em>subsampling</em> de 90&nbsp;%, parada antecipada em 50 rodadas sem melhora
+      (método <em>hist</em>). 381 árvores ativas após a parada antecipada.
+    </p>
+    <p>
+      <strong>ResNet-18:</strong> Arquitetura pré-treinada no ImageNet com cabeça substituída por
+      10 saídas. Imagens redimensionadas para 224&nbsp;&times;&nbsp;224. Treinamento por 30 épocas
+      com Adam (lr&nbsp;=&nbsp;3&nbsp;&times;&nbsp;10<sup>&minus;4</sup>,
+      <em>weight decay</em>&nbsp;=&nbsp;10<sup>&minus;4</sup>), 2 épocas de <em>warmup</em> e
+      <em>label smoothing</em>&nbsp;=&nbsp;0,05. 11&nbsp;181&nbsp;642 parâmetros.
+    </p>
+
+    <h3 class="subsection-title">3.4 Explicabilidade</h3>
+    <p>
+      Para os modelos tradicionais: importância de Gini nativa, importância por permutação
+      (8 repetições) e valores SHAP (<em>TreeExplainer</em>, máximo 1&nbsp;500 amostras). Para a
+      ResNet-18: mapas Grad-CAM e mapas de sensibilidade por oclusão (janela 32&nbsp;&times;&nbsp;32,
+      passo 16) para dois exemplos por classe.
+    </p>
+  </section>
+
+
+  <section id="eda">
+    <h2 class="section-title">4. Análise Exploratória de Dados</h2>
+
+    <h3 class="subsection-title">4.1 Separabilidade Espectral</h3>
+    <p>
+      A análise dos histogramas HSV revela padrões espectrais característicos por grupo. Classes de
+      vegetação concentram-se na faixa verde-amarelada (H&nbsp;&asymp;&nbsp;0,25–0,35), enquanto
+      corpos hídricos apresentam distribuição quase uniforme com leve excesso de tons azulados.
+      <em>SeaLake</em> apresenta baixa saturação (superfície homogênea); classes construídas
+      (<em>Industrial</em>, <em>Residential</em>) mostram distribuições mais espalhadas em saturação
+      e valor. A separabilidade espectral entre <em>HerbaceousVegetation</em>, <em>Pasture</em> e
+      <em>AnnualCrop</em> é limitada no espaço RGB/HSV — todas exibem resposta semelhante nas
+      bandas visíveis, delegando a distinção para textura e contexto espacial.
+    </p>
+
+    <h3 class="subsection-title">4.2 Análise de Textura</h3>
+    <p>
+      As <em>features</em> GLCM revelam contrastes relevantes. <em>Forest</em> e <em>SeaLake</em>
+      apresentam alta homogeneidade (textura suave), enquanto <em>Residential</em> e
+      <em>Industrial</em> apresentam baixa homogeneidade (estruturas artificiais heterogêneas).
+      <em>Highway</em> exibe alto contraste local (bordas nítidas de vias sobre fundo de vegetação
+      ou solo), o que paradoxalmente dificulta sua separação de <em>PermanentCrop</em> &mdash; que
+      também exibe linhas regulares de plantio. A energia GLCM é alta em classes uniformes
+      (<em>Forest</em>, <em>SeaLake</em>) e baixa em áreas urbanas e agrícolas complexas.
+    </p>
+
+    <h3 class="subsection-title">4.3 VARI e Verdor</h3>
+    <p>
+      O VARI médio distingue bem dois grupos extremos: vegetação densa (<em>Forest</em>,
+      <em>HerbaceousVegetation</em>: VARI&nbsp;&asymp;&nbsp;0,20–0,35) e superfícies construídas
+      ou hídricas (<em>Industrial</em>, <em>SeaLake</em>, <em>River</em>: VARI próximo de zero ou
+      negativo). Classes agrícolas (<em>AnnualCrop</em>, <em>PermanentCrop</em>, <em>Pasture</em>)
+      ocupam valores intermediários, com alta variância devida à mistura de vegetação e solo exposto
+      conforme a fase do ciclo fenológico.
+    </p>
+  </section>
+
+
+  <section id="resultados">
+    <h2 class="section-title">5. Resultados</h2>
+
+    <h3 class="subsection-title">5.1 Métricas Globais</h3>
+
+    <div class="table-wrap">
+      <table>
+        <caption>Tabela 2 &mdash; Métricas globais por modelo (5-fold CV, média &plusmn; desvio, IC bootstrap 95&nbsp;%).</caption>
+        <thead>
+          <tr>
+            <th>Métrica</th>
+            <th>Random Forest</th>
+            <th>XGBoost</th>
+            <th>ResNet-18</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Acurácia</td>
+            <td>88,34 &plusmn; 0,11 %</td>
+            <td>90,81 &plusmn; 0,26 %</td>
+            <td class="best">98,54 &plusmn; 0,58 %</td>
+          </tr>
+          <tr>
+            <td>Acurácia balanceada</td>
+            <td>87,73 &plusmn; 0,06 %</td>
+            <td>90,34 &plusmn; 0,25 %</td>
+            <td class="best">98,47 &plusmn; 0,62 %</td>
+          </tr>
+          <tr>
+            <td>F1-macro</td>
+            <td>87,57 &plusmn; 0,08 %</td>
+            <td>90,27 &plusmn; 0,25 %</td>
+            <td class="best">98,48 &plusmn; 0,61 %</td>
+          </tr>
+          <tr>
+            <td>Kappa de Cohen</td>
+            <td>87,02 &plusmn; 0,12 %</td>
+            <td>89,77 &plusmn; 0,29 %</td>
+            <td class="best">98,37 &plusmn; 0,64 %</td>
+          </tr>
+          <tr>
+            <td>Top-2 Acurácia</td>
+            <td>96,35 &plusmn; 0,32 %</td>
+            <td>97,54 &plusmn; 0,21 %</td>
+            <td class="best">99,83 &plusmn; 0,11 %</td>
+          </tr>
+          <tr>
+            <td>AUC-ROC macro</td>
+            <td>99,01 &plusmn; 0,04 %</td>
+            <td>99,34 &plusmn; 0,05 %</td>
+            <td class="best">99,95 &plusmn; 0,02 %</td>
+          </tr>
+          <tr>
+            <td>ECE &darr;</td>
+            <td>10,22 &plusmn; 0,18 %</td>
+            <td class="best">2,31 &plusmn; 0,14 %</td>
+            <td>4,55 &plusmn; 0,12 %</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      A ResNet-18 domina em todas as métricas de acurácia discriminativa, obtendo F1-macro de
+      98,48&nbsp;% &mdash; uma vantagem de +10,91&nbsp;p.p. sobre o RF e +8,21&nbsp;p.p. sobre o
+      XGBoost. A AUC-ROC macro próxima de 100&nbsp;% indica separabilidade quase perfeita no espaço
+      de probabilidades.
+    </p>
+    <p>
+      O ECE merece atenção especial: o XGBoost é o modelo <strong>melhor calibrado</strong>
+      (ECE&nbsp;=&nbsp;2,31&nbsp;%), resultado surpreendente dado que a ResNet-18 aplica
+      <em>label smoothing</em>. O RF apresenta o pior ECE (10,22&nbsp;%), comum em florestas
+      aleatórias que tendem a produzir probabilidades extremas via votação majoritária. A ResNet-18
+      apresenta ECE moderado (4,55&nbsp;%) &mdash; as previsões corretas de alta confiança compensam,
+      mas não eliminam, a sobre/subconfiança residual.
+    </p>
+
+    <h3 class="subsection-title">5.2 Significância Estatística</h3>
+
+    <div class="table-wrap">
+      <table>
+        <caption>Tabela 3 &mdash; Testes de significância pareados (bootstrap pareado + McNemar, correção de Holm).</caption>
+        <thead>
+          <tr>
+            <th>Par A</th>
+            <th>Par B</th>
+            <th>&Delta; Acurácia (A &minus; B)</th>
+            <th><em>p</em> McNemar (Holm)</th>
+            <th><em>p</em> Bootstrap (Holm)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>RandomForest</td>
+            <td>XGBoost</td>
+            <td>&minus;2,47 p.p.</td>
+            <td>6,7 &times; 10<sup>&minus;71</sup></td>
+            <td>0,0</td>
+          </tr>
+          <tr>
+            <td>RandomForest</td>
+            <td>ResNet18</td>
+            <td>&minus;10,20 p.p.</td>
+            <td>0,0</td>
+            <td>0,0</td>
+          </tr>
+          <tr>
+            <td>XGBoost</td>
+            <td>ResNet18</td>
+            <td>&minus;7,73 p.p.</td>
+            <td>0,0</td>
+            <td>0,0</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      Os p-valores nulos no <em>bootstrap</em> indicam que, em nenhuma das 2&nbsp;000 reamostras, o
+      modelo menos acurado superou o mais acurado. Todas as diferenças são robustas e não
+      atribuíveis a variância amostral.
+    </p>
+
+    <h3 class="subsection-title">5.3 Desempenho por Classe</h3>
+
+    <div class="table-wrap">
+      <table>
+        <caption>Tabela 4 &mdash; F1 por classe (média dos 5 folds).</caption>
+        <thead>
+          <tr>
+            <th>Classe</th>
+            <th>Random Forest</th>
+            <th>XGBoost</th>
+            <th>ResNet-18</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>AnnualCrop</td><td>89,43 %</td><td>91,37 %</td><td class="best">97,88 %</td></tr>
+          <tr><td>Forest</td><td>97,69 %</td><td>98,14 %</td><td class="best">99,50 %</td></tr>
+          <tr><td>HerbaceousVegetation</td><td>88,41 %</td><td>91,81 %</td><td class="best">97,69 %</td></tr>
+          <tr><td>Highway</td><td>66,15 %</td><td>73,63 %</td><td class="best">98,60 %</td></tr>
+          <tr><td>Industrial</td><td>91,98 %</td><td>93,49 %</td><td class="best">99,14 %</td></tr>
+          <tr><td>Pasture</td><td>86,53 %</td><td>89,44 %</td><td class="best">97,22 %</td></tr>
+          <tr><td>PermanentCrop</td><td>81,67 %</td><td>85,79 %</td><td class="best">97,20 %</td></tr>
+          <tr><td>Residential</td><td>95,69 %</td><td>96,62 %</td><td class="best">99,52 %</td></tr>
+          <tr><td>River</td><td>80,25 %</td><td>84,10 %</td><td class="best">98,40 %</td></tr>
+          <tr><td>SeaLake</td><td>97,94 %</td><td>98,33 %</td><td class="best">99,65 %</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <figure>
+      <img src="../results/figures/per_class_f1.png"
+           alt="F1 por classe para os três modelos" />
+      <figcaption>Figura 2 &mdash; F1 por classe para os três modelos. <em>Highway</em> é o maior
+        gargalo dos modelos tradicionais; <em>Forest</em> e <em>SeaLake</em> são as classes mais
+        fáceis para todos.</figcaption>
+    </figure>
+
+    <p>
+      Dois padrões se destacam. Primeiro, <strong><em>Highway</em> é a classe mais difícil para
+      modelos tradicionais</strong>: o RF atinge apenas F1&nbsp;=&nbsp;66,15&nbsp;% e o XGBoost
+      73,63&nbsp;% &mdash; um <em>gap</em> de 25–32&nbsp;p.p. em relação à ResNet-18 (98,60&nbsp;%).
+      <em>Features</em> GLCM e HSV não capturam a geometria linear de estrada em escala de
+      <em>patch</em>. Segundo, <strong><em>Forest</em> e <em>SeaLake</em> são as classes mais
+      fáceis</strong>: todos os modelos obtêm F1&nbsp;&gt;&nbsp;97&nbsp;%, refletindo alta
+      separabilidade espectral e de textura.
+    </p>
+
+    <h3 class="subsection-title">5.4 Matrizes de Confusão</h3>
+
+    <figure>
+      <img src="../results/figures/confusion_RandomForest.png"
+           alt="Matriz de confusão — Random Forest" />
+      <figcaption>Figura 3 &mdash; Matriz de confusão do Random Forest. Os erros mais frequentes
+        ocorrem em <em>Highway</em> &rarr; <em>PermanentCrop</em> (202 casos) e
+        <em>River</em> &rarr; <em>Highway</em> (250 casos).</figcaption>
+    </figure>
+
+    <figure>
+      <img src="../results/figures/confusion_XGBoost.png"
+           alt="Matriz de confusão — XGBoost" />
+      <figcaption>Figura 4 &mdash; Matriz de confusão do XGBoost. A confusão
+        <em>Highway</em> &rarr; <em>PermanentCrop</em> cai para 147 casos (&minus;27&nbsp;% em
+        relação ao RF).</figcaption>
+    </figure>
+
+    <figure>
+      <img src="../results/figures/confusion_ResNet18.png"
+           alt="Matriz de confusão — ResNet-18" />
+      <figcaption>Figura 5 &mdash; Matriz de confusão da ResNet-18. A matriz é quase diagonal;
+        os erros residuais mais frequentes são <em>PermanentCrop</em> &rarr; <em>AnnualCrop</em>
+        (43 casos) e <em>Pasture</em> &rarr; <em>HerbaceousVegetation</em> (33 casos).</figcaption>
+    </figure>
+
+    <h3 class="subsection-title">5.5 Curvas de Treinamento e Calibração da ResNet-18</h3>
+
+    <figure>
+      <img src="../results/figures/training_curves_ResNet18.png"
+           alt="Curvas de treinamento da ResNet-18" />
+      <figcaption>Figura 6 &mdash; Curvas de perda e acurácia de treinamento/validação da
+        ResNet-18 (fold representativo). A acurácia de validação supera 95&nbsp;% já nas 5
+        primeiras épocas.</figcaption>
+    </figure>
+
+    <figure>
+      <img src="../results/figures/reliability_ResNet18.png"
+           alt="Diagrama de confiabilidade da ResNet-18" />
+      <figcaption>Figura 7 &mdash; Diagrama de confiabilidade da ResNet-18. O modelo apresenta
+        leve superconfiança na faixa de probabilidade acima de 0,8 (ECE&nbsp;=&nbsp;4,55&nbsp;%).
+        </figcaption>
+    </figure>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════
+       6. EXPLICABILIDADE
+  ═══════════════════════════════════════════════ -->
+  <section id="explicabilidade">
+    <h2 class="section-title">6. Análise de Explicabilidade</h2>
+
+    <h3 class="subsection-title">6.1 Importância de Features (Modelos Tradicionais)</h3>
+
+    <div class="table-wrap">
+      <table>
+        <caption>Tabela 5 &mdash; Importância relativa por grupo de <em>features</em> (Random Forest).</caption>
+        <thead>
+          <tr>
+            <th>Grupo</th>
+            <th>Gini (builtin)</th>
+            <th>Permutação</th>
+            <th>SHAP</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>GLCM (textura)</td><td class="best">47,0 %</td><td>36,8 %</td><td class="best">49,1 %</td></tr>
+          <tr><td>HSV (histograma)</td><td>27,1 %</td><td class="best">59,0 %</td><td>26,2 %</td></tr>
+          <tr><td>RGB (estatísticas)</td><td>16,1 %</td><td>18,7 %</td><td>16,0 %</td></tr>
+          <tr><td>VARI</td><td>3,6 %</td><td>8,0 %</td><td>4,7 %</td></tr>
+          <tr><td>Momentos de Hu</td><td>4,2 %</td><td>3,0 %</td><td>2,8 %</td></tr>
+          <tr><td>Borda (Canny)</td><td>1,9 %</td><td>1,5 %</td><td>2,3 %</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <figure>
+      <img src="../results/figures/group_importance_RandomForest.png"
+           alt="Importância por grupo de features — Random Forest" />
+      <figcaption>Figura 8 &mdash; Importância por grupo de <em>features</em> para o Random Forest
+        (Gini, permutação e SHAP). GLCM domina consistentemente em dois dos três métodos.</figcaption>
+    </figure>
+
+    <figure>
+      <img src="../results/figures/shap_summary_RandomForest.png"
+           alt="SHAP summary plot — Random Forest" />
+      <figcaption>Figura 9 &mdash; <em>Beeswarm</em> SHAP para o Random Forest. A homogeneidade
+        GLCM e o desvio-padrão do canal azul figuram entre as <em>features</em> de maior efeito
+        médio.</figcaption>
+    </figure>
+
+    <p>
+      As <em>features</em> de <strong>textura GLCM</strong> são consistentemente as mais importantes:
+      47&nbsp;% pela importância de Gini e 49&nbsp;% pelo SHAP. A correlação GLCM nos quatro ângulos
+      captura o grau de regularidade da superfície, discriminando vegetação homogênea de estruturas
+      artificiais e cultivos em fileiras. A importância por permutação coloca histogramas HSV em
+      primeiro lugar (59&nbsp;%), divergência esperada quando <em>features</em> correlacionadas são
+      avaliadas como grupo. O VARI agrega apenas 3,6–4,7&nbsp;% &mdash; coerente com a ausência da
+      banda NIR no conjunto RGB.
+    </p>
+
+    <h3 class="subsection-title">6.2 Grad-CAM e Oclusão (ResNet-18)</h3>
+
+    <figure>
+      <img src="../results/figures/gradcam_grid.png"
+           alt="Mapas Grad-CAM por classe — ResNet-18" />
+      <figcaption>Figura 10 &mdash; Mapas Grad-CAM por classe para a ResNet-18. A rede ativa
+        corretamente sobre a via em <em>Highway</em>, sobre o dossel em <em>Forest</em> e sobre o
+        canal fluvial em <em>River</em>.</figcaption>
+    </figure>
+
+    <figure>
+      <img src="../results/figures/occlusion_grid.png"
+           alt="Mapas de sensibilidade por oclusão — ResNet-18" />
+      <figcaption>Figura 11 &mdash; Mapas de sensibilidade por oclusão para a ResNet-18. Cobrir
+        a região da via em imagens de <em>Highway</em> reduz drasticamente a confiança do modelo.
+        </figcaption>
+    </figure>
+
+    <p>
+      Os mapas Grad-CAM demonstram que a ResNet-18 foca corretamente nas regiões de interesse:
+      sobre os pixels da via em <em>Highway</em>, sobre o dossel em <em>Forest</em>, e sobre o
+      canal em <em>River</em>. Este comportamento explica o salto de F1 de 73&nbsp;% (XGBoost)
+      para 98,6&nbsp;% em <em>Highway</em> &mdash; <em>features</em> GLCM e HSV não conseguem
+      capturar a geometria linear de uma estrada em escala de <em>patch</em>. Os mapas de oclusão
+      confirmam os mesmos padrões, reforçando a coerência das ativações da rede com o conteúdo
+      visual diagnóstico de cada classe.
+    </p>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════
+       7. DISCUSSÃO
+  ═══════════════════════════════════════════════ -->
+  <section id="discussao">
+    <h2 class="section-title">7. Discussão</h2>
+
+    <h3 class="subsection-title">7.1 Modelos Tradicionais vs. CNN</h3>
+    <p>
+      A diferença de ~10&nbsp;p.p. de acurácia entre a CNN e os modelos tradicionais deve ser
+      interpretada no contexto de custo-benefício. O RF treina em menos de 4&nbsp;s por
+      <em>fold</em> e o XGBoost em menos de 14&nbsp;s, ambos em CPU; a ResNet-18 demanda ~9,6&nbsp;min
+      por <em>fold</em> em GPU. Para aplicações com orçamento computacional restrito ou onde a
+      interpretabilidade direta das <em>features</em> é necessária, os modelos tradicionais oferecem
+      uma alternativa viável com 88–91&nbsp;% de acurácia.
+    </p>
+    <p>
+      O <em>gap</em> de desempenho é particularmente acentuado em <em>Highway</em>
+      (+32&nbsp;p.p. para a CNN), evidenciando uma limitação fundamental das <em>features</em>
+      artesanais baseadas em estatísticas globais de <em>patch</em>: elas perdem informação espacial
+      de localização (onde está a borda, não apenas quantas bordas existem).
+    </p>
+
+    <h3 class="subsection-title">7.2 XGBoost vs. Random Forest</h3>
+    <p>
+      O XGBoost supera o RF em todas as métricas (+2,47&nbsp;p.p. de acurácia), com diferença
+      estatisticamente significativa. O ganho relativo é maior nas classes de difícil separação:
+      <em>Highway</em> (+7,5&nbsp;p.p.), <em>PermanentCrop</em> (+4,1&nbsp;p.p.) e
+      <em>River</em> (+3,9&nbsp;p.p.). Note-se que o XGBoost ativo possui apenas 381 árvores
+      (após parada antecipada) contra 500 do RF, sugerindo que a qualidade das divisões
+      (gradiente de segunda ordem, profundidade controlada) supera o efeito da quantidade.
+    </p>
+
+    <h3 class="subsection-title">7.3 Calibração</h3>
+    <p>
+      O XGBoost ser o modelo melhor calibrado (ECE&nbsp;=&nbsp;2,31&nbsp;%) é contra-intuitivo.
+      Uma hipótese é que a parada antecipada evita o regime de alta confiança característico do
+      <em>overfitting</em> leve &mdash; o modelo não aprende a produzir probabilidades extremas,
+      resultando em distribuições mais temperadas. O ECE elevado do RF (10,22&nbsp;%) é esperado:
+      a média de votos binários de 500 árvores produz probabilidades concentradas em 0 ou 1.
+      Técnicas como <em>isotonic regression</em> ou <em>Platt scaling</em> poderiam corrigir esse
+      comportamento sem custo preditivo.
+    </p>
+
+    <h3 class="subsection-title">7.4 Limitações</h3>
+    <ul>
+      <li><strong>Ausência de bandas multiespectrais:</strong> o EuroSAT-RGB elimina NIR e SWIR, que contêm informação crítica para índices como NDVI. Modelos treinados no EuroSAT multibanda frequentemente superam os resultados RGB em 2–5&nbsp;p.p.</li>
+      <li><strong>Distribuição geográfica:</strong> o EuroSAT cobre apenas a Europa, com viés para biomas e arquiteturas típicos do continente. A generalização para regiões tropicais ou áridas requer avaliação adicional.</li>
+      <li><strong>Escala temporal única:</strong> cada <em>patch</em> representa um único instante, sem explorar a dimensão temporal (séries temporais de imagens) que é uma das maiores vantagens do Sentinel-2.</li>
+      <li><strong>ResNet-18 como único representante de CNN:</strong> arquiteturas mais modernas (EfficientNet, ViT, Swin Transformer) provavelmente atingiriam acurácias ainda maiores, mas o foco é a comparação entre famílias de abordagens.</li>
+    </ul>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════
+       8. CONCLUSÃO
+  ═══════════════════════════════════════════════ -->
+  <section id="conclusao">
+    <h2 class="section-title">8. Conclusão</h2>
+    <p>
+      Este trabalho apresentou um <em>benchmark</em> comparativo de três abordagens de classificação
+      de uso do solo sobre o EuroSAT-RGB, com análise exploratória do conjunto de dados e estudo de
+      explicabilidade. Os principais achados são:
+    </p>
+    <ul>
+      <li>
+        A <strong>ResNet-18</strong> obteve a melhor acurácia (98,54&nbsp;%), com todas as
+        diferenças em relação aos modelos tradicionais estatisticamente significativas
+        (p&nbsp;&lt;&nbsp;10<sup>&minus;70</sup> após correção de Holm). A vantagem é especialmente
+        marcante em <em>Highway</em>, onde <em>features</em> artesanais falham em capturar
+        geometria espacial.
+      </li>
+      <li>
+        O <strong>XGBoost</strong> superou o Random Forest em +2,47&nbsp;p.p. de acurácia e
+        apresentou a <strong>melhor calibração</strong> (ECE&nbsp;=&nbsp;2,31&nbsp;%), sendo a
+        melhor opção quando GPU não está disponível ou calibração probabilística é crítica.
+      </li>
+      <li>
+        <em>Features</em> de <strong>textura GLCM</strong> são as mais informativas para modelos
+        tradicionais (~47–49&nbsp;% da importância total pelo SHAP e Gini), seguidas pelos
+        histogramas HSV.
+      </li>
+      <li>
+        A análise de <strong>Grad-CAM</strong> confirma que a CNN aprende representações
+        espacialmente coerentes, focando nas regiões visualmente diagnósticas de cada classe &mdash;
+        comportamento inacessível a modelos baseados em <em>features</em> globais de <em>patch</em>.
+      </li>
+    </ul>
+    <p>
+      Os resultados reforçam que, para classificação de imagens de satélite com <em>patches</em> de
+      64&nbsp;&times;&nbsp;64 pixels no domínio RGB, a aprendizagem de representações por CNN oferece
+      ganhos substanciais frente a pipelines de <em>features</em> artesanais, ao custo de maior
+      demanda computacional e menor interpretabilidade direta. Em contextos onde custo computacional,
+      velocidade de inferência ou auditabilidade são relevantes, XGBoost com <em>features</em>
+      GLCM&nbsp;+ HSV representa uma solução competitiva.
+    </p>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════
+       REFERÊNCIAS
+  ═══════════════════════════════════════════════ -->
+  <section id="referencias" class="references">
+    <h2 class="section-title">Referências</h2>
+    <ol>
+      <li>
+        HELBER, P.; BISCHKE, B.; DENGEL, A.; BORTH, D.
+        <strong>EuroSAT: A Novel Dataset and Deep Learning Benchmark for Land Use and Land Cover
+        Classification.</strong>
+        <em>IEEE Journal of Selected Topics in Applied Earth Observations and Remote Sensing</em>,
+        v. 12, n. 7, p. 2217–2226, 2019. DOI: 10.1109/JSTARS.2019.2918242.
+      </li>
+      <li>
+        BREIMAN, L.
+        <strong>Random Forests.</strong>
+        <em>Machine Learning</em>, v. 45, n. 1, p. 5–32, 2001.
+      </li>
+      <li>
+        CHEN, T.; GUESTRIN, C.
+        <strong>XGBoost: A Scalable Tree Boosting System.</strong>
+        In: <em>Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery
+        and Data Mining</em>, 2016. p. 785–794.
+      </li>
+      <li>
+        HE, K.; ZHANG, X.; REN, S.; SUN, J.
+        <strong>Deep Residual Learning for Image Recognition.</strong>
+        In: <em>Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition
+        (CVPR)</em>, 2016. p. 770–778.
+      </li>
+      <li>
+        SELVARAJU, R. R.; COGSWELL, M.; DAS, A.; VEDANTAM, R.; PARIKH, D.; BATRA, D.
+        <strong>Grad-CAM: Visual Explanations from Deep Networks via Gradient-Based Localization.</strong>
+        <em>International Journal of Computer Vision</em>, v. 128, n. 2, p. 336–359, 2020.
+      </li>
+      <li>
+        LUNDBERG, S. M.; LEE, S.-I.
+        <strong>A Unified Approach to Interpreting Model Predictions.</strong>
+        In: <em>Advances in Neural Information Processing Systems (NeurIPS)</em>, v. 30, 2017.
+      </li>
+      <li>
+        HARALICK, R. M.; SHANMUGAM, K.; DINSTEIN, I.
+        <strong>Textural Features for Image Classification.</strong>
+        <em>IEEE Transactions on Systems, Man, and Cybernetics</em>, v. SMC-3, n. 6,
+        p. 610–621, 1973.
+      </li>
+      <li>
+        GITELSON, A. A.; KAUFMAN, Y. J.; STARK, R.; RUNDQUIST, D.
+        <strong>Novel algorithms for remote estimation of vegetation fraction.</strong>
+        <em>Remote Sensing of Environment</em>, v. 80, n. 1, p. 76–87, 2002.
+      </li>
+    </ol>
+  </section>
+
+</div>
+</body>
+</html>

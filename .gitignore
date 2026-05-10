@@ -219,7 +219,9 @@ __marimo__/
 
 # Project-specific
 data/
-results/
+results/explanations/
+results/metrics/
+results/folds.json
 *.pth
 *.pt
 *.npz

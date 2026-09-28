@@ -146,7 +146,7 @@ def main():
                  title="ResNet-18 — Grad-CAM (fold 0)")
     occlusion_grid(images_u8, occ_arr, labels_true,
                    fig_dir / "occlusion_grid.png",
-                   title="ResNet-18 — sensibilidade por oclusão (fold 0)")
+                   title="ResNet-18 — occlusion sensitivity (fold 0)")
     print("Done. Wrote", out_root)
 
 

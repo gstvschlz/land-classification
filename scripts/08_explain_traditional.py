@@ -126,17 +126,17 @@ def main():
     feature_importance_bars(
         rf_builtin, feat_names, feat_groups,
         fig_dir / "feature_importance_RandomForest.png",
-        title="Random Forest — importância (Gini, top 25)", top_k=25,
+        title="Random Forest — importance (Gini, top 25)", top_k=25,
     )
     group_importance_bars(
         group_importances(rf_perm_mean, feat_groups),
         fig_dir / "group_importance_RandomForest.png",
-        title="Random Forest — importância por grupo (permutação)",
+        title="Random Forest — importance by group (permutation)",
     )
     shap_summary(
         rf_shap["signed_avg"], Xs, feat_names,
         fig_dir / "shap_summary_RandomForest.png",
-        title="Random Forest — SHAP (média entre classes)", top_k=20,
+        title="Random Forest — SHAP (mean over classes)", top_k=20,
     )
 
     # ------------------------------------------------------------------ XGB
@@ -189,17 +189,17 @@ def main():
     feature_importance_bars(
         xg_builtin, feat_names, feat_groups,
         fig_dir / "feature_importance_XGBoost.png",
-        title="XGBoost — importância (gain, top 25)", top_k=25,
+        title="XGBoost — importance (gain, top 25)", top_k=25,
     )
     group_importance_bars(
         group_importances(xg_perm_mean, feat_groups),
         fig_dir / "group_importance_XGBoost.png",
-        title="XGBoost — importância por grupo (permutação)",
+        title="XGBoost — importance by group (permutation)",
     )
     shap_summary(
         xg_shap["signed_avg"], Xs_raw, feat_names,
         fig_dir / "shap_summary_XGBoost.png",
-        title="XGBoost — SHAP (média entre classes)", top_k=20,
+        title="XGBoost — SHAP (mean over classes)", top_k=20,
     )
 
     print("Done. Wrote explanations under", out_root)

@@ -1,8 +1,7 @@
 """Plotting helpers. All produce PNG files at a target path.
 
 Every figure obeys the sober editorial style defined in :mod:`style`:
-serif body, muted palette, light grid, no top/right spines. PT-BR axis
-labels because figures are embedded in the PT-BR article.
+serif body, muted palette, light grid, no top/right spines. English labels.
 """
 from __future__ import annotations
 from pathlib import Path
@@ -44,7 +43,7 @@ def confusion_heatmap(cm: np.ndarray, class_names: list[str],
     ax.set_yticks(range(len(class_names)))
     ax.set_xticklabels(class_names, rotation=45, ha="right")
     ax.set_yticklabels(class_names)
-    ax.set_xlabel("Predito"); ax.set_ylabel("Real"); ax.set_title(title)
+    ax.set_xlabel("Predicted"); ax.set_ylabel("True"); ax.set_title(title)
     ax.grid(False)
     # Annotate counts; light text on dark cells, dark text on light cells.
     threshold = 0.55
@@ -55,7 +54,7 @@ def confusion_heatmap(cm: np.ndarray, class_names: list[str],
             ax.text(j, i, f"{int(cm[i, j])}", ha="center", va="center",
                     fontsize=8, color=color)
     cbar = fig.colorbar(im, ax=ax, fraction=0.04, pad=0.02)
-    cbar.set_label("Proporção (linha)", fontsize=9)
+    cbar.set_label("Row-normalised share", fontsize=9)
     cbar.outline.set_visible(False)
     cbar.ax.tick_params(labelsize=8)
     return _save(fig, out_path)
@@ -74,9 +73,9 @@ def per_class_f1_bars(per_model_f1: dict[str, np.ndarray],
                color=color, edgecolor="white", linewidth=0.4, label=name)
     ax.set_xticks(x + width * (n_models - 1) / 2)
     ax.set_xticklabels(class_names, rotation=35, ha="right")
-    ax.set_ylabel("F1 (média entre folds)")
+    ax.set_ylabel("F1 (mean over folds)")
     ax.set_ylim(0.0, 1.02)
-    ax.set_title("F1 por classe e modelo")
+    ax.set_title("F1 per class and model")
     ax.legend(loc="lower right", ncol=n_models, handlelength=1.2)
     ax.grid(axis="x", visible=False)
     return _save(fig, out_path)
@@ -109,7 +108,7 @@ def reliability_diagram(probs: np.ndarray, y: np.ndarray,
             linestyle="--", label="ideal")
     bar_w = 1.0 / n_bins * 0.92
     ax.bar(centers, accs, width=bar_w, color=MODEL_COLORS["ResNet18"],
-           edgecolor="white", linewidth=0.4, label="acurácia", alpha=0.85)
+           edgecolor="white", linewidth=0.4, label="accuracy", alpha=0.85)
     # gap = confidence - accuracy (positive = over-confident)
     gap = confs - accs
     for c, a, g in zip(centers, accs, gap):
@@ -117,18 +116,18 @@ def reliability_diagram(probs: np.ndarray, y: np.ndarray,
             continue
         ax.bar(c, g, width=bar_w, bottom=a, color="#A1505A", alpha=0.45,
                edgecolor="none")
-    ax.set_ylabel("Acurácia")
+    ax.set_ylabel("Accuracy")
     ax.set_ylim(0.0, 1.02); ax.set_xlim(0.0, 1.0)
     ax.set_title(title)
     handles = [
-        Patch(facecolor=MODEL_COLORS["ResNet18"], label="acurácia"),
-        Patch(facecolor="#A1505A", alpha=0.45, label="excesso de confiança"),
+        Patch(facecolor=MODEL_COLORS["ResNet18"], label="accuracy"),
+        Patch(facecolor="#A1505A", alpha=0.45, label="overconfidence"),
     ]
     ax.legend(handles=handles, loc="upper left")
     axw.bar(centers, weights, width=bar_w, color="#888888", alpha=0.55,
             edgecolor="none")
     axw.set_ylabel("Frac.")
-    axw.set_xlabel("Confiança")
+    axw.set_xlabel("Confidence")
     axw.set_ylim(0, max(weights.max() * 1.1, 1e-3))
     return _save(fig, out_path)
 
@@ -144,7 +143,7 @@ def class_distribution(labels: np.ndarray, class_names: list[str],
     ax.set_xticks(range(len(class_names)))
     ax.set_xticklabels([class_names[i] for i in order], rotation=35, ha="right")
     ax.set_ylabel("Imagens")
-    ax.set_title("Distribuição de classes — EuroSAT-RGB")
+    ax.set_title("Class distribution — EuroSAT-RGB")
     for b, c in zip(bars, counts[order]):
         ax.text(b.get_x() + b.get_width() / 2, b.get_height() + 30,
                 str(int(c)), ha="center", va="bottom", fontsize=8,
@@ -176,14 +175,14 @@ def training_curves(history_per_fold: list[dict], out_path: str | Path,
         m_tr = np.mean([x[:L] for x in losses_tr], axis=0)
         m_va = np.mean([x[:L] for x in losses_va], axis=0)
         m_acc = np.mean([x[:L] for x in accs], axis=0)
-        axes[0].plot(ep, m_tr, color="#222", linewidth=1.6, label="treino (média)")
+        axes[0].plot(ep, m_tr, color="#222", linewidth=1.6, label="train (mean)")
         axes[0].plot(ep, m_va, color="#222", linewidth=1.6, linestyle="--",
-                     label="val. (média)")
-        axes[1].plot(ep, m_acc, color="#222", linewidth=1.8, label="média")
-    axes[0].set_title(f"{title}: perda"); axes[0].set_xlabel("época")
-    axes[0].set_ylabel("perda"); axes[0].legend(handlelength=1.5)
-    axes[1].set_title(f"{title}: acurácia (val.)"); axes[1].set_xlabel("época")
-    axes[1].set_ylabel("acurácia")
+                     label="val. (mean)")
+        axes[1].plot(ep, m_acc, color="#222", linewidth=1.8, label="mean")
+    axes[0].set_title(f"{title}: loss"); axes[0].set_xlabel("epoch")
+    axes[0].set_ylabel("loss"); axes[0].legend(handlelength=1.5)
+    axes[1].set_title(f"{title}: accuracy (val.)"); axes[1].set_xlabel("epoch")
+    axes[1].set_ylabel("accuracy")
     axes[1].legend(ncol=2, handlelength=1.5)
     fig.tight_layout()
     return _save(fig, out_path)
@@ -208,7 +207,7 @@ def feature_importance_bars(importances: np.ndarray, feature_names: list[str],
             linewidth=0.4)
     ax.set_yticks(range(len(order)))
     ax.set_yticklabels(names, fontsize=8)
-    ax.set_xlabel("Importância")
+    ax.set_xlabel("Importance")
     ax.set_title(title)
     used_groups = sorted(set(groups[i] for i in order))
     handles = [Patch(facecolor=GROUP_COLORS.get(g, "#888"), label=g)
@@ -228,7 +227,7 @@ def group_importance_bars(group_importances: dict[str, float],
     cols = [GROUP_COLORS.get(k, "#888") for k in names]
     fig, ax = plt.subplots(figsize=(6.0, 3.2))
     ax.bar(names, vals, color=cols, edgecolor="white", linewidth=0.5)
-    ax.set_ylabel("Importância agregada")
+    ax.set_ylabel("Aggregated importance")
     ax.set_title(title)
     ax.grid(axis="x", visible=False)
     plt.setp(ax.get_xticklabels(), rotation=20, ha="right")
@@ -265,7 +264,7 @@ def shap_summary(shap_values_2d: np.ndarray, X: np.ndarray,
     ax.axvline(0, color="#888", linewidth=0.6)
     ax.set_yticks(range(len(order)))
     ax.set_yticklabels([feature_names[i] for i in order], fontsize=8)
-    ax.set_xlabel("Valor SHAP (impacto na saída)")
+    ax.set_xlabel("SHAP value (impact on model output)")
     ax.set_title(title)
     ax.grid(axis="y", visible=False)
     sm = plt.cm.ScalarMappable(cmap=DIVERGING_CMAP,
@@ -302,7 +301,7 @@ def gradcam_grid(images: np.ndarray, cams: np.ndarray,
         ax.imshow(img)
         ax.imshow(cam, cmap=SEQUENTIAL_CMAP, alpha=0.55, vmin=0.0, vmax=1.0)
         ok = labels_true[k] == labels_pred[k]
-        marker = "✓" if ok else "✗"
+        marker = "→"  # colour already encodes right/wrong
         col = "#3F6B4E" if ok else "#A1505A"
         ax.set_title(
             f"{labels_true[k]}\n{marker} {labels_pred[k]} ({confidences[k]:.2f})",
@@ -315,7 +314,7 @@ def gradcam_grid(images: np.ndarray, cams: np.ndarray,
 
 def occlusion_grid(images: np.ndarray, occ_maps: np.ndarray,
                    labels_true: list[str], out_path: str | Path,
-                   title: str = "Sensibilidade por oclusão") -> Path:
+                   title: str = "Occlusion sensitivity") -> Path:
     """images: (N, H, W, 3) uint8; occ_maps: (N, H, W) float (drop in prob)."""
     n = len(images)
     cols = 6

@@ -165,7 +165,6 @@ venv.bak/
 .ropeproject
 
 # mkdocs documentation
-/site
 
 # mypy
 .mypy_cache/
@@ -218,7 +217,7 @@ __marimo__/
 .streamlit/secrets.toml
 
 # Project-specific
-data/
+/data/
 results/explanations/
 results/metrics/
 results/folds.json
@@ -226,3 +225,6 @@ results/folds.json
 *.pt
 *.npz
 
+
+# Copied from results/figures by `mise run site` and by the Pages workflow
+/site/figures/

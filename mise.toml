@@ -1,0 +1,78 @@
+[tools]
+python = "3.12"
+uv = "0.12"
+
+[env]
+PYTHONUTF8 = "1"                # Windows consoles default to cp1252; scripts print unicode
+UV_PYTHON = "3.12"              # use the mise-pinned interpreter, not a uv-managed one
+UV_PYTHON_PREFERENCE = "only-system"
+
+# Pipeline stages. Each one wraps a numbered script in scripts/.
+# `mise run all` = full study (hours on a GPU); `mise run smoke` = same stages, --fast (minutes).
+
+[tasks.setup]
+description = "Create .venv and install the locked dependencies"
+run = "uv sync"
+
+[tasks.download]
+description = "1. Download EuroSAT-RGB and write the shared 5-fold split"
+run = "uv run scripts/01_download_data.py"
+
+[tasks.features]
+description = "2. Extract the hand-crafted features (cached in results/features.npz)"
+run = "uv run scripts/02_extract_features.py"
+
+[tasks.train-traditional]
+description = "3. Random Forest + XGBoost (add `-- --fast` for a quick run)"
+run = "uv run scripts/03_train_traditional.py"
+
+[tasks.train-resnet]
+description = "4. Fine-tune ResNet-18 (add `-- --fast` for a quick run)"
+run = "uv run scripts/04_train_resnet.py"
+
+[tasks.explain-traditional]
+description = "5. Feature importance + SHAP for the traditional models"
+run = "uv run scripts/08_explain_traditional.py"
+
+[tasks.explain-cnn]
+description = "6. Grad-CAM + occlusion maps for ResNet-18"
+run = "uv run scripts/09_explain_cnn.py"
+
+[tasks.evaluate]
+description = "7. Aggregate metrics, significance tests and figures"
+run = "uv run scripts/06_evaluate_all.py"
+
+[tasks.all]
+description = "Full study: every stage, in order (~6-10 h on a GPU)"
+run = [
+    { task = "download" },
+    { task = "features" },
+    { task = "train-traditional" },
+    { task = "train-resnet" },
+    { task = "explain-traditional" },
+    { task = "explain-cnn" },
+    { task = "evaluate" },
+]
+
+[tasks.smoke]
+description = "Quick end-to-end run (2 folds / 1 fold, few epochs) to check the setup"
+run = [
+    { task = "download" },
+    { task = "features" },
+    { task = "train-traditional", args = ["--fast"] },
+    { task = "train-resnet", args = ["--fast"] },
+    { task = "explain-traditional", args = ["--fast"] },
+    { task = "explain-cnn", args = ["--fast"] },
+    { task = "evaluate" },
+]
+
+[tasks.check]
+description = "Sanity check: the feature extractor matches the layout used by the explainability code"
+run = "uv run tests/check_features.py"
+
+[tasks.site]
+description = "Preview the GitHub Pages site at http://localhost:8000"
+run = [
+    "uv run python -c \"import shutil; shutil.copytree('results/figures', 'site/figures', dirs_exist_ok=True)\"",
+    "uv run python -m http.server 8000 -d site",
+]

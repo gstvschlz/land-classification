@@ -1,10 +1,6 @@
-# land-classification
-
-Can hand-built features keep up with a neural network? A reproducible benchmark on
+> Can hand-built features keep up with a neural network? A reproducible benchmark on
 [EuroSAT-RGB](https://github.com/phelber/EuroSAT) (27,000 Sentinel-2 patches, 10 land-use classes),
 with a look inside each model.
-
-**Project page:** <https://gstvschlz.github.io/land-classification/>
 
 | Family      | Model         | Input                                                                    |
 |-------------|---------------|--------------------------------------------------------------------------|

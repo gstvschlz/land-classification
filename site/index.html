@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>land-classification</title>
+<meta name="description" content="A reproducible benchmark on 27,000 Sentinel-2 satellite patches: hand-crafted features with Random Forest and XGBoost versus a pretrained ResNet-18, plus a look inside each model.">
+<meta name="theme-color" content="#16261a">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23152312'/%3E%3Cpath d='M6 22l7-9 5 6 3-4 5 7z' fill='%236ba64c'/%3E%3Ccircle cx='23' cy='9' r='3' fill='%2347d18c'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f5f2e8;
+    --surface: #ebe7d8;
+    --ink: #1b2417;
+    --muted: #4b5647;
+    --line: #cdc8b3;
+    --accent: #6ba64c;        /* decorative fills, bars, lines */
+    --accent-ink: #37701f;    /* accent used as text */
+    --mint: #47d18c;
+    --mint-ink: #0b6f40;
+    --on-accent: #10200a;
+    --heat: #6ba64c;
+    --contour: rgba(84, 140, 56, .28);
+    --serif: Palatino, "Palatino Linotype", "Book Antiqua", "URW Palladio L", P052, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", Consolas, monospace;
+    --rail: 244px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0e150d; --surface: #172016; --ink: #e9efe3; --muted: #a9b7a2; --line: #2c3b2a;
+      --accent: #6ba64c; --accent-ink: #8fcc70; --mint: #47d18c; --mint-ink: #47d18c; --on-accent: #0c1808;
+      --heat: #3d7a2b; --contour: rgba(107, 166, 76, .24);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0e150d; --surface: #172016; --ink: #e9efe3; --muted: #a9b7a2; --line: #2c3b2a;
+    --accent: #6ba64c; --accent-ink: #8fcc70; --mint: #47d18c; --mint-ink: #47d18c; --on-accent: #0c1808;
+    --heat: #3d7a2b; --contour: rgba(107, 166, 76, .24);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 19px/1.65 var(--serif);
+    -webkit-font-smoothing: antialiased;
+    overflow-wrap: break-word;
+  }
+  a { color: var(--accent-ink); text-underline-offset: 3px; }
+  img { max-width: 100%; height: auto; display: block; }
+  code, pre { font-family: var(--mono); }
+  code { font-size: .86em; background: var(--surface); padding: .1em .35em; border-radius: 3px; }
+  p { margin: 0 0 1em; }
+  h1, h2, h3 { margin: 0; font-weight: 700; line-height: 1.12; letter-spacing: -.01em; }
+  h3 { font-family: var(--sans); font-size: 1.05rem; letter-spacing: 0; }
+  :focus-visible { outline: 3px solid var(--mint-ink); outline-offset: 3px; }
+
+  .skip { position: absolute; left: 8px; top: -60px; z-index: 50; background: var(--ink); color: var(--bg); padding: 8px 14px; font: 600 .9rem var(--sans); }
+  .skip:focus { top: 8px; }
+
+  /* ---------- chapter rail (mobile: top strip / desktop: fixed left column) ---------- */
+  .rail {
+    position: sticky; top: 0; z-index: 20; background: var(--bg);
+    border-bottom: 1px solid var(--line); font-family: var(--sans);
+  }
+  .rail-in { display: flex; align-items: center; gap: 18px; padding: 0 16px; overflow-x: auto; scrollbar-width: none; }
+  .rail-in::-webkit-scrollbar { display: none; }
+  .brand { font-weight: 800; font-size: .95rem; letter-spacing: -.02em; color: var(--ink); text-decoration: none; white-space: nowrap; padding: 13px 0; }
+  .brand i { font-style: normal; color: var(--accent-ink); }
+  .chapters { display: flex; gap: 4px; margin: 0; padding: 0; list-style: none; }
+  .chapters a {
+    display: block; padding: 13px 8px; font-size: .82rem; font-weight: 600; color: var(--muted);
+    text-decoration: none; white-space: nowrap;
+  }
+  .chapters a .n { color: var(--accent-ink); margin-right: 5px; font-variant-numeric: tabular-nums; }
+  .chapters a[aria-current="true"] { color: var(--ink); box-shadow: inset 0 -3px 0 var(--accent); }
+  .rail::after { content: ""; position: absolute; left: 0; bottom: -1px; height: 3px; width: calc(var(--p, 0) * 100%); background: linear-gradient(90deg, var(--accent), var(--mint)); }
+  .pct, .rail-foot { display: none; }
+
+  @media (min-width: 960px) {
+    body { padding-left: var(--rail); }
+    .rail {
+      position: fixed; left: 0; top: 0; bottom: 0; width: var(--rail);
+      border-bottom: 0; border-right: 1px solid var(--line);
+      display: flex; flex-direction: column; justify-content: center; padding: 28px 26px 28px 30px;
+    }
+    .rail::after { display: none; }
+    .rail-in { display: block; padding: 0; overflow: visible; }
+    .brand { display: block; font-size: 1.15rem; padding: 0 0 34px; }
+    .chapters { display: block; position: relative; }
+    .chapters::before, .chapters::after { content: ""; position: absolute; left: 5px; width: 2px; top: 0; }
+    .chapters::before { bottom: 0; background: var(--line); }
+    .chapters::after { height: calc(var(--f, 0) * 100%); background: linear-gradient(var(--accent), var(--mint)); transition: height .15s linear; }
+    .chapters li { position: relative; }
+    .chapters a { padding: 11px 0 11px 30px; font-size: .95rem; white-space: normal; box-shadow: none !important; line-height: 1.25; }
+    .chapters a::before {
+      content: ""; position: absolute; left: 0; top: 50%; width: 12px; height: 12px; margin-top: -6px; border-radius: 50%;
+      background: var(--bg); border: 2px solid var(--line); z-index: 1;
+    }
+    .chapters a[aria-current="true"]::before { background: var(--accent); border-color: var(--accent-ink); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 28%, transparent); }
+    .chapters a.done::before { border-color: var(--accent); }
+    .chapters a:hover { color: var(--ink); }
+    .pct { display: block; margin-top: 34px; font: 600 .78rem var(--sans); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+    .pct b { color: var(--accent-ink); font-size: 1.6rem; letter-spacing: -.02em; display: block; line-height: 1.1; font-variant-numeric: tabular-nums; }
+    .rail-foot { display: block; margin-top: 22px; font: .78rem/1.4 var(--sans); color: var(--muted); }
+  }
+
+  /* ---------- chapters ---------- */
+  main { display: block; }
+  .chapter {
+    min-height: 100vh; min-height: 100svh;
+    padding: clamp(56px, 11vh, 120px) max(16px, calc((100% - 1000px) / 2));
+    display: flex; flex-direction: column; justify-content: center;
+    border-bottom: 1px solid var(--line); position: relative; scroll-margin-top: 0;
+  }
+  .chapter > * { width: 100%; }
+  .chapter.alt { background: var(--surface); }
+  @media (max-width: 959px) { .chapter { scroll-margin-top: 44px; } }
+
+  .head { display: flex; align-items: baseline; gap: 16px; margin-bottom: 28px; }
+  .head .num {
+    font: italic 400 clamp(3.4rem, 9vw, 6.5rem)/.8 var(--serif); color: var(--accent);
+    letter-spacing: -.04em; flex: none;
+  }
+  @media (max-width: 560px) { .head { flex-direction: column; gap: 10px; } }
+  .kicker { font: 700 .8rem var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--accent-ink); margin: 0 0 8px; }
+  h2 { font-size: clamp(1.9rem, 4.6vw, 3.1rem); }
+  .prose { max-width: 38rem; }
+  .prose p, .prose li { font-size: 1.08rem; }
+  .muted { color: var(--muted); }
+  .note { font-size: .95rem; color: var(--muted); max-width: 44rem; }
+  .note b { color: var(--ink); }
+
+  /* hero */
+  .hero { overflow: hidden; }
+  .topo { position: absolute; inset: 0; width: 100%; height: 100%; fill: none; stroke: var(--contour); stroke-width: 1.4; pointer-events: none;
+    -webkit-mask-image: linear-gradient(180deg, #000 30%, transparent 100%); mask-image: linear-gradient(180deg, #000 30%, transparent 100%); }
+  .hero > *:not(.topo) { position: relative; }
+  .hero .kicker { margin-bottom: 20px; }
+  h1 { font-size: clamp(2.5rem, 7.4vw, 5.6rem); line-height: 1.02; letter-spacing: -.03em; max-width: 12em; }
+  h1 em { color: var(--accent-ink); font-style: italic; }
+  .lead { font-size: clamp(1.15rem, 2.4vw, 1.5rem); color: var(--muted); max-width: 32em; margin: 24px 0 0; line-height: 1.5; }
+  .go { display: flex; flex-wrap: wrap; gap: 12px 28px; margin-top: 30px; font-family: var(--sans); }
+  .go a { font-weight: 700; font-size: .98rem; text-decoration: none; padding: 12px 18px; border: 2px solid var(--accent-ink); color: var(--accent-ink); }
+  .go a:first-child { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .go a:hover { filter: brightness(1.1); }
+  .peaks { display: flex; gap: clamp(10px, 3vw, 28px); margin-top: 48px; align-items: flex-end; max-width: 620px; }
+  .peak { flex: 1; min-width: 0; font-family: var(--sans); }
+  .peak .col { height: 170px; display: flex; align-items: flex-end; border-bottom: 2px solid var(--ink); }
+  .peak .col i { display: block; width: 100%; height: var(--h); background: var(--muted); opacity: .55; }
+  .peak.best .col i { background: linear-gradient(180deg, var(--mint), var(--accent)); opacity: 1; }
+  .peak b { display: block; font: 700 clamp(1.3rem, 4.2vw, 2rem)/1.1 var(--serif); letter-spacing: -.02em; margin-top: 10px; font-variant-numeric: tabular-nums; }
+  .peak.best b { color: var(--accent-ink); }
+  .peak span { font-size: .85rem; color: var(--muted); font-weight: 600; }
+  .peaks-cap { margin-top: 14px; font: .88rem/1.4 var(--sans); color: var(--muted); max-width: 620px; }
+  .cue { margin-top: 36px; font: 600 .78rem var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+  .cue::after { content: " \2193"; color: var(--accent-ink); }
+
+  /* classes as a leader list */
+  .classes { list-style: none; padding: 0; margin: 30px 0 0; columns: 2 260px; column-gap: 40px; font-family: var(--sans); font-size: .95rem; }
+  .classes li { display: flex; align-items: baseline; gap: 6px; padding: 5px 0; break-inside: avoid; }
+  .classes li::after { content: ""; order: 2; flex: 1; border-bottom: 1px dotted var(--muted); min-width: 12px; transform: translateY(-3px); }
+  .classes li span { order: 3; font-variant-numeric: tabular-nums; color: var(--muted); }
+  .dropcap::first-letter { float: left; font-size: 4.2rem; line-height: .8; padding: 6px 10px 0 0; color: var(--accent-ink); font-weight: 700; }
+
+  /* approach: sticky metro diagram */
+  .story { display: grid; gap: 28px; }
+  .metro { width: 100%; height: auto; display: block; margin: 0 auto; max-width: 560px; }
+  .metro .ln { fill: none; stroke-width: 9; stroke-linecap: round; }
+  .metro .la { stroke: var(--accent); }
+  .metro .lb { stroke: var(--mint); }
+  .metro .lt { stroke: var(--muted); }
+  .metro .st { fill: var(--bg); stroke-width: 5; }
+  .metro .st.a { stroke: var(--accent-ink); }
+  .metro .st.b { stroke: var(--mint-ink); }
+  .metro .st.t { stroke: var(--ink); }
+  .metro .st.end { fill: var(--ink); stroke: var(--bg); stroke-width: 3; }
+  .metro .ti { fill: var(--ink); font: 700 19px var(--sans); }
+  .metro .su { fill: var(--muted); font: 400 15px var(--sans); }
+  .metro .tag { font: 700 12px var(--sans); letter-spacing: .14em; }
+  .metro .tag.a { fill: var(--accent-ink); }
+  .metro .tag.b { fill: var(--mint-ink); }
+  .metro g { transition: opacity .35s; }
+  .steps { display: grid; gap: 28px; counter-reset: s; }
+  .step { counter-increment: s; border-left: 3px solid var(--line); padding: 2px 0 2px 20px; }
+  .step h3::before { content: "Step " counter(s); display: block; font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent-ink); margin-bottom: 4px; }
+  .step p { margin: 6px 0 0; font-size: 1.05rem; color: var(--muted); }
+  @media (min-width: 1120px) {
+    .story { grid-template-columns: minmax(0, 440px) minmax(0, 1fr); gap: 48px; align-items: start; }
+    .story .sticky { position: sticky; top: 6vh; }
+    .metro { max-height: 88vh; }
+    .steps { gap: 0; }
+    .step { min-height: 72vh; display: flex; flex-direction: column; justify-content: center; transition: opacity .3s, border-color .3s; }
+    .js .step { opacity: .55; }
+    .js .step.on { opacity: 1; }
+    .step.on { border-left-color: var(--accent); }
+    .js .metro g[data-s]:not(.on) { opacity: .35; }
+    .step:last-child { min-height: 60vh; }
+  }
+
+  /* results */
+  .plate { display: block; background: #fff; padding: 10px; border: 1px solid var(--line); }
+  .plate:hover { border-color: var(--accent-ink); }
+  figure { margin: 0; }
+  figcaption { font-size: .95rem; color: var(--muted); margin-top: 10px; line-height: 1.45; max-width: 46rem; }
+  figcaption b { color: var(--ink); }
+  figcaption .fig { font: 700 .72rem var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--accent-ink); display: block; margin-bottom: 2px; }
+  figcaption .tap { font: .8rem var(--sans); }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 44px; }
+  @media (max-width: 780px) { .pair { grid-template-columns: 1fr; } }
+
+  .tbl { overflow-x: auto; border: 1px solid var(--line); background: var(--bg); }
+  .alt .tbl { background: var(--bg); }
+  table { width: 100%; border-collapse: collapse; font-family: var(--sans); font-size: .95rem; }
+  th, td { text-align: right; padding: 10px 12px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; vertical-align: top; }
+  th:first-child, td:first-child { text-align: left; }
+  tbody tr:last-child td { border-bottom: 0; }
+  th:not(:first-child) { white-space: nowrap; }
+  th { font-size: .78rem; font-weight: 700; color: var(--muted); letter-spacing: .04em; }
+  caption { text-align: left; font-size: .92rem; color: var(--muted); padding: 10px 12px; caption-side: top; }
+  .sd { color: var(--muted); font-size: .82em; white-space: nowrap; }
+  td.best { color: var(--accent-ink); font-weight: 700; }
+  td.f1 { background: color-mix(in srgb, var(--heat) calc((var(--v) - .6) * 200%), var(--bg)); }
+  td.f1.low { font-weight: 700; }
+  tr.focus td:first-child { font-weight: 700; }
+  .tbl-wrap { margin-top: 26px; }
+  .tbl-wrap:first-of-type { margin-top: 0; }
+  @media (max-width: 560px) { th, td { padding: 8px 6px; font-size: .85rem; } .sd { display: block; } }
+
+  .facts { display: grid; grid-template-columns: repeat(3, 1fr); margin: 40px 0; border-top: 3px solid var(--ink); }
+  .fact { padding: 18px 20px 4px 0; }
+  .fact + .fact { padding-left: 20px; border-left: 1px solid var(--line); }
+  .fact h3 { font: 700 clamp(1.5rem, 3vw, 2.1rem)/1.1 var(--serif); letter-spacing: -.02em; color: var(--accent-ink); margin-bottom: 8px; }
+  .fact p { font-size: .98rem; color: var(--muted); margin: 0; }
+  @media (max-width: 700px) {
+    .facts { grid-template-columns: 1fr; }
+    .fact, .fact + .fact { padding: 16px 0 8px; border-left: 0; }
+    .fact + .fact { border-top: 1px solid var(--line); }
+  }
+
+  /* inside */
+  .shares { display: grid; gap: 12px; margin: 26px 0; max-width: 42rem; font-family: var(--sans); }
+  .shares .row { display: grid; grid-template-columns: 9.5rem 1fr 3.4rem; gap: 12px; align-items: center; font-size: .95rem; }
+  .shares .row > span:last-child { text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; }
+  .bar { height: 14px; background: var(--line); }
+  .bar i { display: block; height: 100%; width: var(--w); background: var(--muted); opacity: .6; }
+  .shares .row:first-child .bar i { background: linear-gradient(90deg, var(--accent), var(--mint)); opacity: 1; }
+  @media (max-width: 520px) { .shares .row { grid-template-columns: 6.6rem 1fr 3rem; gap: 8px; font-size: .88rem; } }
+  .big { margin-top: 56px; }
+  .big figure { margin-top: 20px; }
+
+  /* limits */
+  .limits { list-style: none; margin: 0; padding: 0; counter-reset: l; }
+  .limits li { counter-increment: l; display: grid; grid-template-columns: 3.2rem 1fr; gap: 6px 12px; padding: 22px 0; border-top: 1px solid var(--line); max-width: 46rem; }
+  .limits li::before { content: counter(l, decimal-leading-zero); font: italic 400 1.9rem/1 var(--serif); color: var(--accent-ink); }
+  .limits b { font: 700 1.15rem/1.2 var(--serif); display: block; }
+  .limits span { color: var(--muted); font-size: 1.02rem; display: block; margin-top: 2px; }
+
+  /* reproduce */
+  .cols { display: grid; gap: 32px; grid-template-columns: minmax(0, 1fr); }
+  @media (min-width: 900px) { .cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 40px; } }
+  pre { background: #0f1a0d; color: #dfeed6; border-left: 5px solid var(--accent); padding: 18px 20px; overflow-x: auto; font-size: .88rem; line-height: 1.65; margin: 0 0 1em; }
+  pre code { background: none; padding: 0; font-size: inherit; }
+  .tasks th, .tasks td { text-align: left; }
+  .tasks td:first-child { white-space: nowrap; }
+  @media (max-width: 560px) { .tasks td:first-child { white-space: normal; } }
+
+  footer { padding: 32px max(16px, calc((100% - 1000px) / 2)) 48px; color: var(--muted); font: .88rem/1.5 var(--sans); }
+  footer .in { display: flex; flex-wrap: wrap; gap: 8px 32px; justify-content: space-between; }
+</style>
+</head>
+<body>
+<a class="skip" href="#question">Skip to content</a>
+
+<nav class="rail" aria-label="Chapters">
+  <div class="rail-in">
+    <a class="brand" href="#top">land<i>-</i>classification</a>
+    <ol class="chapters">
+      <li><a href="#question"><span class="n">01</span>Question</a></li>
+      <li><a href="#approach"><span class="n">02</span>Approach</a></li>
+      <li><a href="#results"><span class="n">03</span>Results</a></li>
+      <li><a href="#inside"><span class="n">04</span>Inside the models</a></li>
+      <li><a href="#limits"><span class="n">05</span>Honest limits</a></li>
+      <li><a href="#reproduce"><span class="n">06</span>Reproduce</a></li>
+    </ol>
+    <div class="pct" aria-hidden="true"><b id="pct">0%</b>read</div>
+    <div class="rail-foot"><a href="https://github.com/gstvschlz/land-classification">Source on GitHub</a></div>
+  </div>
+</nav>
+
+<main>
+
+<section id="top" class="chapter hero" aria-labelledby="h-top">
+  <svg class="topo" viewBox="0 0 900 700" preserveAspectRatio="xMaxYMin slice" aria-hidden="true" focusable="false"><path d="M808 200L811 203L812 207L811 210L809 213L806 216L803 218L798 220L795 222L791 223L788 225L785 227L782 229L779 230L775 231L772 232L768 232L764 232L760 231L756 231L753 231L749 231L745 231L741 230L737 230L733 229L729 227L725 226L722 224L719 221L716 219L714 216L712 213L712 210L712 206L714 203L717 200L719 197L721 195L723 193L723 190L723 187L723 184L723 181L724 178L726 175L729 173L733 171L736 170L740 169L744 168L748 166L752 165L756 164L760 163L764 163L769 164L773 165L776 167L780 169L783 171L785 173L788 175L790 178L792 180L794 182L795 185L797 187L798 190L800 192L803 194L806 197Z"/><path d="M860 200L862 207L863 213L861 220L856 226L850 231L842 235L834 239L827 242L821 245L815 249L810 253L805 257L798 261L791 263L783 265L775 265L768 264L760 262L753 261L745 261L738 261L730 262L721 262L712 262L703 261L695 258L688 254L682 249L677 243L674 237L671 231L670 224L670 218L671 212L673 206L676 200L679 195L682 190L684 185L684 179L684 174L683 167L684 161L687 154L691 149L697 145L705 142L713 139L721 138L728 136L736 133L743 131L752 128L760 126L769 126L777 127L785 130L792 134L798 139L803 144L808 149L813 154L817 157L822 161L828 165L833 169L837 173L842 178L847 183L852 188L856 194Z"/><path d="M911 200L911 210L910 220L906 229L899 238L890 245L880 252L870 257L860 262L851 267L843 273L835 279L826 285L817 291L806 294L795 296L783 296L771 295L760 293L749 292L738 293L726 294L713 296L699 298L684 298L670 295L658 290L649 282L642 273L638 263L636 253L635 243L634 234L634 225L634 216L634 208L635 200L637 192L638 184L640 176L640 168L641 159L642 150L644 140L649 131L656 123L666 117L677 112L689 109L701 106L712 103L724 99L735 95L747 92L760 89L773 89L786 92L797 97L807 104L815 113L822 121L828 128L835 134L843 138L853 142L864 146L875 151L884 157L893 164L900 172L905 181L909 190Z"/><path d="M958 200L955 213L951 225L945 237L938 248L930 259L919 268L907 276L895 284L883 291L871 298L859 305L847 312L834 318L820 323L806 326L790 327L775 327L760 327L745 327L729 328L713 331L694 334L675 335L655 334L637 330L623 321L613 309L607 295L605 281L604 267L605 254L604 242L601 232L597 221L593 211L590 200L589 189L589 178L591 166L593 155L597 144L601 132L606 120L614 109L623 99L635 90L649 82L664 76L679 72L695 67L711 63L727 60L743 56L760 55L777 56L793 61L808 68L820 78L830 89L839 99L848 107L859 113L872 117L888 120L905 125L922 131L937 139L949 149L956 161L959 174L959 187Z"/><path d="M999 200L993 215L987 230L983 244L977 259L970 272L960 285L947 297L931 306L915 315L898 322L882 329L866 336L850 343L834 350L816 355L798 360L779 363L760 366L740 368L720 370L698 372L675 374L651 373L628 369L608 361L592 348L582 332L577 314L576 295L577 278L576 263L573 250L567 238L558 226L548 214L540 200L536 185L535 171L539 156L546 142L554 129L562 115L571 102L580 88L590 74L603 62L619 50L637 42L656 35L677 30L697 27L718 25L739 25L760 26L780 29L799 35L816 44L832 54L845 65L858 75L871 82L887 88L907 91L929 95L952 100L974 108L992 120L1004 134L1010 150L1010 167L1005 184Z"/><path d="M1038 200L1030 217L1024 235L1021 252L1017 269L1011 287L1001 303L986 317L967 329L946 338L924 345L903 351L883 358L865 367L847 377L828 387L807 397L784 405L760 411L735 415L709 416L682 416L656 413L630 407L606 398L585 385L569 369L558 350L552 329L549 309L548 291L544 274L537 260L526 246L512 232L498 217L487 200L481 182L482 164L489 146L499 130L512 114L524 99L535 83L545 66L556 49L570 32L587 17L608 5L632 -3L658 -7L685 -7L711 -5L736 -1L760 3L783 9L804 15L825 21L844 29L863 37L881 45L901 51L923 56L947 61L974 67L1001 75L1025 87L1044 102L1055 120L1058 141L1055 162L1047 181Z"/><path d="M1078 200L1070 220L1065 240L1061 260L1058 280L1051 301L1040 320L1022 336L1000 349L974 358L948 366L923 373L901 381L882 393L862 408L841 424L817 440L790 454L760 462L729 465L697 463L667 456L639 446L613 434L589 419L568 403L551 385L537 365L527 345L520 325L513 306L505 288L494 272L479 256L463 239L447 220L435 200L430 179L432 157L440 137L454 117L469 99L483 82L496 63L507 43L519 22L535 1L555 -17L580 -31L610 -38L642 -39L675 -35L706 -28L734 -21L760 -14L785 -9L809 -6L834 -3L859 -1L884 2L910 7L937 13L964 20L992 28L1020 39L1046 52L1069 68L1087 87L1097 109L1100 133L1096 156L1087 179Z"/><path d="M1123 200L1115 223L1108 245L1103 268L1096 291L1087 313L1073 334L1053 352L1028 367L1001 378L973 388L947 398L924 410L902 426L881 446L857 468L829 489L796 505L760 513L723 513L687 505L655 490L626 472L601 453L578 434L556 416L535 398L516 381L499 362L484 343L470 324L457 305L443 285L429 266L413 245L399 223L389 200L383 176L385 151L393 127L406 105L422 83L437 62L452 40L466 17L481 -6L501 -29L525 -48L556 -61L592 -67L630 -65L667 -57L701 -47L732 -37L760 -31L787 -29L815 -31L845 -35L877 -39L911 -40L945 -37L977 -30L1008 -19L1036 -4L1061 13L1085 31L1106 52L1122 75L1133 99L1138 125L1137 151L1131 176Z"/><path d="M1173 200L1164 226L1153 251L1141 276L1129 300L1116 323L1100 345L1079 366L1056 384L1029 400L1003 414L977 429L953 447L929 468L903 492L874 516L840 538L802 553L760 558L718 553L680 537L646 516L617 491L592 467L568 446L544 429L518 414L491 400L464 384L440 366L420 345L403 323L390 300L379 276L367 251L357 226L347 200L341 173L339 145L343 117L353 90L367 64L384 39L403 15L423 -10L445 -33L472 -55L503 -72L539 -83L580 -87L621 -83L661 -75L697 -65L730 -57L760 -54L790 -57L823 -65L860 -76L900 -84L941 -87L981 -84L1018 -72L1049 -55L1075 -33L1097 -10L1117 15L1135 39L1152 65L1167 90L1177 117L1181 145L1180 173Z"/><path d="M1224 200L1211 229L1193 257L1174 282L1155 307L1138 331L1122 355L1105 379L1086 403L1065 426L1041 448L1016 471L989 493L960 517L928 541L891 563L851 581L806 591L760 591L715 580L674 560L639 534L609 507L582 482L556 462L527 447L494 435L459 423L424 409L393 390L368 368L350 341L339 313L332 285L325 257L316 229L306 200L296 170L289 138L287 106L293 74L306 43L327 15L353 -11L383 -34L416 -55L451 -72L489 -86L530 -96L572 -99L614 -98L654 -94L691 -89L726 -86L760 -89L795 -97L834 -109L877 -122L923 -132L970 -134L1015 -127L1053 -110L1084 -86L1108 -58L1127 -28L1145 0L1163 28L1182 54L1202 81L1218 109L1229 139L1231 169Z"/><path d="M103 620L102 623L101 625L100 628L99 631L97 633L95 635L93 637L90 639L87 640L84 642L82 643L79 645L76 646L73 647L70 648L67 648L63 648L60 648L57 648L53 649L49 649L45 650L41 650L37 650L33 649L30 647L28 644L27 641L26 638L26 634L26 632L26 629L25 627L24 625L23 622L22 620L22 618L22 615L22 612L23 610L24 608L25 605L26 602L28 600L30 598L32 596L35 594L39 593L42 591L46 591L49 590L53 589L56 588L60 588L64 589L67 590L70 591L73 593L75 596L77 598L79 599L82 601L85 601L89 602L93 603L96 604L100 606L102 609L104 611L104 614L104 617Z"/><path d="M142 620L140 625L138 630L137 635L136 640L134 646L131 650L126 654L121 658L115 661L108 663L102 665L97 667L91 669L86 672L80 675L74 677L67 679L60 681L53 682L45 683L37 683L29 682L22 681L14 679L8 675L3 671L-0 665L-2 659L-3 652L-3 647L-4 642L-5 638L-8 634L-12 629L-16 625L-20 620L-21 615L-21 609L-19 604L-16 599L-13 595L-10 590L-6 586L-3 581L0 576L4 571L9 566L16 563L23 561L30 559L38 559L46 559L53 560L60 561L67 563L73 564L79 567L85 570L90 572L95 575L101 577L107 579L114 580L122 581L130 584L137 587L143 591L147 597L148 603L147 609L145 614Z"/><path d="M180 620L177 628L175 635L174 643L172 650L170 658L166 665L159 671L150 676L141 680L131 683L122 685L113 689L106 693L99 699L91 705L82 712L71 717L60 720L48 721L36 720L25 717L14 713L5 708L-4 702L-12 696L-18 689L-24 682L-28 674L-31 667L-34 660L-37 653L-41 647L-47 641L-53 635L-59 628L-63 620L-65 612L-64 604L-61 596L-56 589L-50 582L-45 575L-40 568L-36 560L-31 552L-25 545L-18 538L-8 533L3 530L16 530L28 531L40 534L50 537L60 540L69 542L78 543L88 543L98 544L107 545L117 546L128 548L138 551L148 555L159 559L168 564L177 570L183 577L187 586L188 595L187 603L183 612Z"/><path d="M221 620L218 630L214 640L210 650L207 660L202 669L195 678L187 686L177 693L166 698L154 703L144 708L134 715L125 723L115 732L104 742L91 751L76 757L60 760L44 759L28 754L14 746L3 737L-8 728L-17 719L-27 712L-36 705L-46 699L-55 692L-64 684L-71 676L-77 667L-83 659L-88 649L-94 640L-99 630L-103 620L-105 609L-105 598L-103 588L-98 577L-92 568L-85 558L-78 548L-71 538L-63 529L-54 519L-42 512L-28 507L-12 505L4 506L20 510L35 514L48 518L60 520L72 520L84 517L98 514L113 511L129 510L145 511L159 515L172 521L183 529L193 537L202 547L210 556L216 566L222 576L225 587L225 598L224 609Z"/><path d="M265 620L259 633L251 645L243 656L234 667L227 678L220 688L212 699L204 710L195 720L184 730L173 739L161 749L148 760L134 770L118 780L100 788L80 793L60 793L40 788L22 779L7 768L-7 755L-18 744L-30 736L-43 729L-57 724L-73 718L-88 712L-102 704L-113 694L-121 682L-126 670L-129 658L-132 645L-136 633L-140 620L-145 607L-148 593L-149 579L-146 564L-140 551L-131 538L-119 527L-106 517L-92 508L-76 500L-59 494L-42 490L-23 488L-5 488L13 490L30 493L45 494L60 493L75 489L92 483L111 478L132 474L153 473L172 476L189 483L203 494L214 506L222 519L230 532L238 544L246 556L255 567L262 580L267 593L268 607Z"/><path d="M304 620L294 635L282 649L269 662L258 674L251 686L246 700L243 715L239 731L233 748L223 764L210 778L193 790L173 800L152 808L130 813L107 816L83 816L60 813L38 807L18 798L-0 787L-17 776L-32 766L-48 758L-64 752L-83 746L-103 741L-122 733L-139 723L-153 711L-161 696L-166 681L-169 665L-171 650L-175 635L-182 620L-190 604L-197 586L-200 568L-198 550L-190 534L-175 520L-155 508L-133 500L-111 494L-89 488L-69 484L-50 479L-32 474L-14 469L4 465L22 461L41 457L60 453L80 448L102 443L125 439L150 438L173 440L195 446L214 457L229 471L241 486L250 502L259 517L268 531L279 544L291 558L301 572L307 588L309 604Z"/></svg>
+  <p class="kicker">land use from satellite images</p>
+  <h1 id="h-top">Can hand-built features keep up with a <em>neural network?</em></h1>
+  <p class="lead">I trained three models to name the land use in 27,000 Sentinel-2 image patches, then opened them up to see what each one looks at.</p>
+  <div class="go">
+    <a href="#results">See the results</a>
+    <a href="#reproduce">Reproduce it</a>
+  </div>
+  <div class="peaks" role="group" aria-label="Accuracy of the three models">
+    <div class="peak best"><div class="col"><i style="--h:98.96%"></i></div><b>98.96%</b><span>ResNet-18</span></div>
+    <div class="peak"><div class="col"><i style="--h:90.32%"></i></div><b>90.32%</b><span>XGBoost</span></div>
+    <div class="peak"><div class="col"><i style="--h:86.93%"></i></div><b>86.93%</b><span>Random Forest</span></div>
+  </div>
+  <p class="peaks-cap">Accuracy, mean of 5 cross-validation folds. Every model sees the same splits.</p>
+  <p class="cue">Scroll</p>
+</section>
+
+<section id="question" class="chapter alt" aria-labelledby="h-question">
+  <div class="head"><span class="num" aria-hidden="true">01</span><div><p class="kicker">the question</p><h2 id="h-question">Does a network really beat a well-built classic pipeline?</h2></div></div>
+  <div class="prose">
+    <p class="dropcap">Mapping farmland, forest, roads and cities from satellite images is routine work in remote sensing. Two approaches compete. In the classic one, a person decides what to measure in each image (colour, texture, edges) and a model like a Random Forest learns from those numbers. In the deep one, a convolutional network reads the raw pixels and finds its own features.</p>
+    <p>Both are used in practice, and the network usually wins. I wanted to know by how much, where the gap comes from, and whether the answer holds up under a proper statistical test rather than one lucky split.</p>
+    <p>The data is <b>EuroSAT-RGB</b>: 27,000 patches of 64&times;64 pixels cut from Sentinel-2 images over Europe, each labelled with one of ten land-use classes.</p>
+  </div>
+  <ul class="classes" aria-label="Patches per class">
+    <li>AnnualCrop<span>3,000</span></li>
+    <li>Forest<span>3,000</span></li>
+    <li>HerbaceousVegetation<span>3,000</span></li>
+    <li>Highway<span>2,500</span></li>
+    <li>Industrial<span>2,500</span></li>
+    <li>Pasture<span>2,000</span></li>
+    <li>PermanentCrop<span>2,500</span></li>
+    <li>Residential<span>3,000</span></li>
+    <li>River<span>2,500</span></li>
+    <li>SeaLake<span>3,000</span></li>
+  </ul>
+</section>
+
+<section id="approach" class="chapter" aria-labelledby="h-approach">
+  <div class="head"><span class="num" aria-hidden="true">02</span><div><p class="kicker">the approach</p><h2 id="h-approach">One fair comparison, three models</h2></div></div>
+  <div class="story">
+    <div class="sticky">
+      <svg class="metro" viewBox="0 0 560 660" role="img" aria-label="Pipeline drawn as a route map. A shared trunk runs from EuroSAT-RGB, 27,000 patches, to 5 stratified folds. It then splits in two. The classic route goes through hand-crafted features, 87 numbers per patch, into Random Forest and XGBoost. The deep route takes raw 224 by 224 pixels into a pretrained ResNet-18. Both routes merge into scores and significance tests, then into SHAP, Grad-CAM and occlusion.">
+        <g data-s="1" class="on">
+          <path class="ln lt" d="M280 40V128"/>
+          <circle class="st t" cx="280" cy="40" r="10"/>
+          <circle class="st t" cx="280" cy="128" r="10"/>
+          <text class="ti" x="302" y="38">EuroSAT-RGB</text>
+          <text class="su" x="302" y="58">27,000 patches, 10 classes</text>
+          <text class="ti" x="302" y="126">5 stratified folds</text>
+          <text class="su" x="302" y="146">the same split for every model</text>
+        </g>
+        <g data-s="2">
+          <path class="ln la" d="M280 128C280 180 200 160 200 215V375"/>
+          <text class="tag a" x="178" y="196" text-anchor="end">CLASSIC ROUTE</text>
+          <circle class="st a" cx="200" cy="245" r="10"/>
+          <text class="ti" x="178" y="235" text-anchor="end">Hand-crafted</text>
+          <text class="ti" x="178" y="256" text-anchor="end">features</text>
+          <text class="su" x="178" y="277" text-anchor="end">87 numbers per patch</text>
+          <circle class="st a" cx="200" cy="322" r="10"/>
+          <text class="ti" x="178" y="329" text-anchor="end">Random Forest</text>
+          <circle class="st a" cx="200" cy="375" r="10"/>
+          <text class="ti" x="178" y="382" text-anchor="end">XGBoost</text>
+        </g>
+        <g data-s="3">
+          <path class="ln lb" d="M280 128C280 180 360 160 360 215V350"/>
+          <text class="tag b" x="382" y="196">DEEP ROUTE</text>
+          <circle class="st b" cx="360" cy="245" r="10"/>
+          <text class="ti" x="382" y="243">Raw pixels</text>
+          <text class="su" x="382" y="264">224&times;224 RGB image</text>
+          <circle class="st b" cx="360" cy="335" r="10"/>
+          <text class="ti" x="382" y="333">ResNet-18</text>
+          <text class="su" x="382" y="354">pretrained on ImageNet</text>
+        </g>
+        <g data-s="4">
+          <path class="ln la" d="M200 375C200 440 280 430 280 490"/>
+          <path class="ln lb" d="M360 350C360 430 280 420 280 490"/>
+          <path class="ln lt" d="M280 490V600"/>
+          <circle class="st t" cx="280" cy="520" r="10"/>
+          <text class="ti" x="302" y="514">Scores +</text>
+          <text class="ti" x="302" y="536">significance tests</text>
+          <circle class="st end" cx="280" cy="600" r="13"/>
+          <text class="ti" x="302" y="598">Then look inside</text>
+          <text class="su" x="302" y="618">SHAP &middot; Grad-CAM &middot; occlusion</text>
+        </g>
+      </svg>
+    </div>
+    <div class="steps">
+      <div class="step" data-s="1">
+        <h3>Same data, same folds</h3>
+        <p>Each class is split evenly across 5 folds. Every model is trained on four folds and tested on the fifth, five times over, so every patch is predicted exactly once by every model.</p>
+      </div>
+      <div class="step" data-s="2">
+        <h3>Classic route: 87 hand-crafted numbers</h3>
+        <p>Colour statistics, colour histograms, texture measures (GLCM), shape moments, an edge-density count and a vegetation index (VARI). Random Forest and XGBoost learn from these.</p>
+      </div>
+      <div class="step" data-s="3">
+        <h3>Deep route: ResNet-18</h3>
+        <p>A network pretrained on ImageNet, fine-tuned on the patches. It gets the pixels and nothing else.</p>
+      </div>
+      <div class="step" data-s="4">
+        <h3>Then look inside</h3>
+        <p>SHAP shows which features the tree models rely on. Grad-CAM and occlusion tests show which image regions the network relies on.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="results" class="chapter alt" aria-labelledby="h-results">
+  <div class="head"><span class="num" aria-hidden="true">03</span><div><p class="kicker">the results</p><h2 id="h-results">The network wins, and by a lot</h2></div></div>
+
+  <div class="tbl-wrap">
+    <div class="tbl">
+      <table>
+        <caption>Mean over 5 folds (&plusmn; standard deviation across folds).</caption>
+        <thead><tr><th scope="col"><span class="sr">Metric</span></th><th scope="col">Random Forest</th><th scope="col">XGBoost</th><th scope="col">ResNet-18</th></tr></thead>
+        <tbody>
+          <tr><td>Accuracy</td><td>86.93% <span class="sd">&plusmn; 0.48</span></td><td>90.32% <span class="sd">&plusmn; 0.44</span></td><td class="best">98.96% <span class="sd">&plusmn; 0.22</span></td></tr>
+          <tr><td>Macro F1</td><td>86.08% <span class="sd">&plusmn; 0.54</span></td><td>89.75% <span class="sd">&plusmn; 0.51</span></td><td class="best">98.92% <span class="sd">&plusmn; 0.22</span></td></tr>
+          <tr><td>Wrong labels (of 27,000)</td><td>3,528</td><td>2,614</td><td class="best">280</td></tr>
+          <tr><td>Calibration error (ECE, lower is better)</td><td>10.96% <span class="sd">&plusmn; 0.54</span></td><td class="best">1.98% <span class="sd">&plusmn; 0.67</span></td><td>4.63% <span class="sd">&plusmn; 0.09</span></td></tr>
+          <tr><td>Training time per fold</td><td>4 s (CPU)</td><td>25 s (CPU)</td><td>10.4 min (GPU)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="facts">
+    <div class="fact"><h3>9&times; fewer errors</h3><p>ResNet-18 mislabels 280 patches. XGBoost mislabels 2,614.</p></div>
+    <div class="fact"><h3>Not a lucky split</h3><p>Every pairwise gap is significant under a paired bootstrap and McNemar's test, with Holm correction.</p></div>
+    <div class="fact"><h3>Calibration flips</h3><p>XGBoost's confidence is the most honest of the three. Random Forest's is the least.</p></div>
+  </div>
+
+  <div class="prose">
+    <p><b>Where the gap comes from.</b> Most classes are easy for every model. <i>Highway</i> is the exception: the classic models find it hard, and the network does not.</p>
+  </div>
+
+  <div class="tbl-wrap">
+    <div class="tbl">
+      <table>
+        <caption>F1 score per class, mean over 5 folds. Darker green is better.</caption>
+        <thead><tr><th scope="col">Class</th><th scope="col">Random Forest</th><th scope="col">XGBoost</th><th scope="col">ResNet-18</th></tr></thead>
+        <tbody>
+          <tr><td>AnnualCrop</td><td class="f1" style="--v:.893">89.3</td><td class="f1" style="--v:.914">91.4</td><td class="f1" style="--v:.986">98.6</td></tr>
+          <tr><td>Forest</td><td class="f1" style="--v:.966">96.6</td><td class="f1" style="--v:.975">97.5</td><td class="f1" style="--v:.998">99.8</td></tr>
+          <tr><td>HerbaceousVegetation</td><td class="f1" style="--v:.871">87.1</td><td class="f1" style="--v:.918">91.8</td><td class="f1" style="--v:.983">98.3</td></tr>
+          <tr class="focus"><td>Highway</td><td class="f1 low" style="--v:.631">63.1</td><td class="f1 low" style="--v:.732">73.2</td><td class="f1" style="--v:.992">99.2</td></tr>
+          <tr><td>Industrial</td><td class="f1" style="--v:.917">91.7</td><td class="f1" style="--v:.941">94.1</td><td class="f1" style="--v:.992">99.2</td></tr>
+          <tr><td>Pasture</td><td class="f1" style="--v:.850">85.0</td><td class="f1" style="--v:.886">88.6</td><td class="f1" style="--v:.979">97.9</td></tr>
+          <tr><td>PermanentCrop</td><td class="f1" style="--v:.804">80.4</td><td class="f1" style="--v:.856">85.6</td><td class="f1" style="--v:.979">97.9</td></tr>
+          <tr><td>Residential</td><td class="f1" style="--v:.956">95.6</td><td class="f1" style="--v:.969">96.9</td><td class="f1" style="--v:.995">99.5</td></tr>
+          <tr><td>River</td><td class="f1" style="--v:.762">76.2</td><td class="f1" style="--v:.816">81.6</td><td class="f1" style="--v:.992">99.2</td></tr>
+          <tr><td>SeaLake</td><td class="f1" style="--v:.959">95.9</td><td class="f1" style="--v:.968">96.8</td><td class="f1" style="--v:.998">99.8</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="pair">
+    <figure>
+      <a class="plate" href="figures/confusion_XGBoost.png"><img src="figures/confusion_XGBoost.png" width="1556" height="1255" loading="lazy" alt="Confusion matrix for XGBoost: rows are true classes, columns are predicted classes; Highway and River are frequently confused with each other."></a>
+      <figcaption><span class="fig">Confusion matrix</span><b>XGBoost.</b> A road and a river are both thin, dark lines across a field. XGBoost swaps them 241 and 238 times, the largest confusion of any pair. <span class="tap">Tap the image to enlarge.</span></figcaption>
+    </figure>
+    <figure>
+      <a class="plate" href="figures/confusion_ResNet18.png"><img src="figures/confusion_ResNet18.png" width="1556" height="1255" loading="lazy" alt="Confusion matrix for ResNet-18: almost all counts sit on the diagonal."></a>
+      <figcaption><span class="fig">Confusion matrix</span><b>ResNet-18.</b> Almost everything sits on the diagonal. Its biggest slip is 34 PermanentCrop patches read as HerbaceousVegetation, classes that really do look alike. <span class="tap">Tap the image to enlarge.</span></figcaption>
+    </figure>
+  </div>
+
+  <p class="note" style="margin-top:32px"><b>Reading ECE.</b> When a model says "90% sure", how far is that from how often it is right? ECE averages that gap, so lower is better. Random Forest is off by about 11 points on average, XGBoost by about 2.</p>
+</section>
+
+<section id="inside" class="chapter" aria-labelledby="h-inside">
+  <div class="head"><span class="num" aria-hidden="true">04</span><div><p class="kicker">inside the models</p><h2 id="h-inside">What each model looks at</h2></div></div>
+
+  <div class="prose">
+    <p><b>The tree models lean on texture.</b> Adding up SHAP values by feature group for the Random Forest, texture (GLCM) carries the largest share, ahead of colour histograms.</p>
+  </div>
+  <div class="shares" role="group" aria-label="Share of total SHAP importance by feature group, Random Forest">
+    <div class="row"><span>Texture (GLCM)</span><div class="bar"><i style="--w:43.3%"></i></div><span>43.3%</span></div>
+    <div class="row"><span>Colour histograms</span><div class="bar"><i style="--w:29.3%"></i></div><span>29.3%</span></div>
+    <div class="row"><span>Colour statistics</span><div class="bar"><i style="--w:16.9%"></i></div><span>16.9%</span></div>
+    <div class="row"><span>Vegetation index</span><div class="bar"><i style="--w:5.4%"></i></div><span>5.4%</span></div>
+    <div class="row"><span>Shape moments</span><div class="bar"><i style="--w:2.5%"></i></div><span>2.5%</span></div>
+    <div class="row"><span>Edge density</span><div class="bar"><i style="--w:2.5%"></i></div><span>2.5%</span></div>
+  </div>
+  <p class="note">Importance methods do not always agree. Permutation importance on the same forest ranks colour histograms first (50.1%) and texture third (16.4%), because correlated features share credit differently. Treat the ranking as a hint, not a verdict.</p>
+
+  <div class="big">
+    <div class="prose">
+      <p><b>The network looks at the object that defines the class.</b> Grad-CAM paints the regions that pushed the network towards its answer. Red titles mark mistakes.</p>
+    </div>
+    <figure>
+      <a class="plate" href="figures/gradcam_grid.png"><img src="figures/gradcam_grid.png" width="2242" height="2019" loading="lazy" alt="Grid of 30 satellite patches with Grad-CAM heatmaps, three per class, with the true label, predicted label and confidence above each."></a>
+      <figcaption><span class="fig">Grad-CAM</span><b>Grad-CAM, ResNet-18.</b> For each class, two correct predictions and one confident mistake (title in red). Dark regions carry the most weight. On Highway and River the heat follows the road or the channel itself, not the surrounding field. <span class="tap">Tap the image to enlarge.</span></figcaption>
+    </figure>
+  </div>
+
+  <div class="big">
+    <div class="prose">
+      <p>Occlusion is a second, independent check: hide one square of the image at a time and see how much the answer suffers.</p>
+    </div>
+    <figure>
+      <a class="plate" href="figures/occlusion_grid.png"><img src="figures/occlusion_grid.png" width="2258" height="2019" loading="lazy" alt="Grid of the same 30 patches with occlusion sensitivity maps."></a>
+      <figcaption><span class="fig">Occlusion</span><b>Occlusion sensitivity, ResNet-18.</b> Dark squares are the places where hiding the image hurts the prediction most. They line up with the same road and channel structures Grad-CAM found. <span class="tap">Tap the image to enlarge.</span></figcaption>
+    </figure>
+  </div>
+</section>
+
+<section id="limits" class="chapter alt" aria-labelledby="h-limits">
+  <div class="head"><span class="num" aria-hidden="true">05</span><div><p class="kicker">honest limits</p><h2 id="h-limits">What this does not show</h2></div></div>
+  <ol class="limits">
+    <li><div><b>RGB only.</b><span>The near-infrared and shortwave bands that make vegetation and water easy to separate are not used.</span></div></li>
+    <li><div><b>Europe only.</b><span>EuroSAT covers European landscapes; nothing here says the models transfer to the tropics or deserts.</span></div></li>
+    <li><div><b>One snapshot per patch.</b><span>Time series, which are Sentinel-2's main strength, are ignored.</span></div></li>
+    <li><div><b>One network.</b><span>A newer architecture would probably score higher. The point here is classic versus deep, not the best network.</span></div></li>
+    <li><div><b>Explanations are evidence, not proof.</b><span>Grad-CAM and SHAP are approximations, and they come from a single fold.</span></div></li>
+  </ol>
+</section>
+
+<section id="reproduce" class="chapter" aria-labelledby="h-reproduce">
+  <div class="head"><span class="num" aria-hidden="true">06</span><div><p class="kicker">reproduce it</p><h2 id="h-reproduce">A few commands, no manual setup</h2></div></div>
+  <div class="cols">
+    <div>
+      <pre><code>git clone https://github.com/gstvschlz/land-classification
+cd land-classification
+mise trust            # allow the repo's mise.toml
+mise install          # pins Python 3.12 and uv
+mise run setup        # installs the locked dependencies
+mise run smoke        # end-to-end check, a few minutes
+mise run all          # the full study</code></pre>
+      <p class="note">You only need <a href="https://mise.jdx.dev/">mise</a> installed. It downloads the pinned Python and uv, and the pipeline downloads the dataset itself (95 MB, checksum-verified).</p>
+      <p class="note"><b>How long it takes.</b> The full study took about 80 minutes on a laptop with an RTX 5090 GPU. ResNet-18 is most of that, at roughly 10 minutes per fold. On a CPU expect many hours.</p>
+    </div>
+    <div class="tbl">
+      <table class="tasks">
+        <thead><tr><th scope="col">Task</th><th scope="col">What it does</th></tr></thead>
+        <tbody>
+          <tr><td><code>mise run download</code></td><td>Fetch EuroSAT, write the 5-fold split</td></tr>
+          <tr><td><code>mise run features</code></td><td>Compute the 87 hand-crafted features</td></tr>
+          <tr><td><code>mise run train-traditional</code></td><td>Random Forest and XGBoost</td></tr>
+          <tr><td><code>mise run train-resnet</code></td><td>Fine-tune ResNet-18</td></tr>
+          <tr><td><code>mise run explain-traditional</code></td><td>Feature importance and SHAP</td></tr>
+          <tr><td><code>mise run explain-cnn</code></td><td>Grad-CAM and occlusion maps</td></tr>
+          <tr><td><code>mise run evaluate</code></td><td>Metrics, tests and figures</td></tr>
+          <tr><td><code>mise run check</code></td><td>Sanity-check the feature extractor</td></tr>
+          <tr><td><code>mise run site</code></td><td>Preview this page locally</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <p class="note" style="margin-top:26px">Every hyperparameter and the random seed live in <code>configs/default.yaml</code>. The numbers on this page come from one run of <code>mise run all</code> with that file, so a rerun on the same setup should match closely. GPU kernels are not bit-for-bit deterministic, so expect small differences in the last digit.</p>
+</section>
+
+</main>
+
+<footer>
+  <div class="in">
+    <span>Gustavo Scholze &middot; <a href="https://github.com/gstvschlz/land-classification">source on GitHub</a> &middot; MIT license</span>
+    <span>Data: Helber et al., <i>EuroSAT</i>, IEEE JSTARS 12(7), 2019.</span>
+  </div>
+</footer>
+
+<style>.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}</style>
+<script>
+(function () {
+  var d = document, r = d.documentElement;
+  r.classList.add('js');
+  var links = [].slice.call(d.querySelectorAll('.chapters a'));
+  var secs = links.map(function (a) { return d.getElementById(a.hash.slice(1)); });
+  var pct = d.getElementById('pct'), ticking = false;
+
+  function update() {
+    ticking = false;
+    var h = r.scrollHeight - innerHeight, y = scrollY;
+    var p = h > 0 ? Math.min(1, Math.max(0, y / h)) : 0;
+    r.style.setProperty('--p', p.toFixed(4));
+    if (pct) pct.textContent = Math.round(p * 100) + '%';
+    var probe = y + innerHeight * 0.4, cur = -1, f = 0;
+    secs.forEach(function (s, i) { if (s && s.offsetTop <= probe) cur = i; });
+    if (cur >= 0) {
+      var s = secs[cur], n = secs.length;
+      f = Math.min((n - 0.5) / n, (cur + 0.5 + Math.min(1, (probe - s.offsetTop) / s.offsetHeight)) / n);
+    }
+    r.style.setProperty('--f', f.toFixed(4));
+    links.forEach(function (a, i) {
+      if (i === cur) a.setAttribute('aria-current', 'true'); else a.removeAttribute('aria-current');
+      a.classList.toggle('done', i < cur);
+    });
+    if (cur >= 0 && innerWidth < 960) {
+      var a = links[cur], box = a.closest('.rail-in');
+      if (box) box.scrollLeft = a.offsetLeft - 90;
+    }
+  }
+  function req() { if (!ticking) { ticking = true; requestAnimationFrame(update); } }
+  addEventListener('scroll', req, { passive: true });
+  addEventListener('resize', req);
+  update();
+
+  /* sticky pipeline: highlight the part of the diagram that matches the step in view */
+  var steps = [].slice.call(d.querySelectorAll('.step')), groups = [].slice.call(d.querySelectorAll('.metro g[data-s]'));
+  function show(n) {
+    groups.forEach(function (g) { g.classList.toggle('on', g.getAttribute('data-s') === n); });
+    steps.forEach(function (s) { s.classList.toggle('on', s.getAttribute('data-s') === n); });
+  }
+  if (steps.length && 'IntersectionObserver' in window) {
+    show('1');
+    var io = new IntersectionObserver(function (es) {
+      es.forEach(function (e) { if (e.isIntersecting) show(e.target.getAttribute('data-s')); });
+    }, { rootMargin: '-45% 0px -45% 0px' });
+    steps.forEach(function (s) { io.observe(s); });
+  } else {
+    groups.forEach(function (g) { g.classList.add('on'); });
+    steps.forEach(function (s) { s.classList.add('on'); });
+  }
+})();
+</script>
+</body>
+</html>
